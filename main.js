@@ -1,648 +1,410 @@
-import { createApp, h } from 'vue'
+import { createApp } from 'vue/dist/vue.esm-bundler.js'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 
-const STORAGE_KEY_MERCHANTS = 'bcpay_merchants_v1'
-
 const app = createApp({
+  template: `
+    <div class="layout-container">
+      <!-- 左側導覽列 -->
+      <div class="sidebar">
+        <div class="sidebar-logo">💳 BCPay 管理系統 v2.3.0</div>
+        <div 
+          v-for="item in menuItems" 
+          :key="item.key" 
+          class="menu-item"
+          :class="{ active: activeMenu === item.key }"
+          @click="activeMenu = item.key"
+        >
+          {{ item.label }}
+        </div>
+      </div>
+
+      <!-- 主內容區 -->
+      <div class="main-content">
+        
+        <!-- 1. 跑量總表模組 -->
+        <div v-if="activeMenu === 'run_summary'">
+          <div class="card-grid">
+            <div class="card">
+              <div class="card-title">總代收額</div>
+              <div class="card-value" style="color: #52c41a;">￥{{ totalCollect.toLocaleString() }}</div>
+            </div>
+            <div class="card">
+              <div class="card-title">總代付額</div>
+              <div class="card-value" style="color: #fa8c16;">￥{{ totalPayout.toLocaleString() }}</div>
+            </div>
+            <div class="card">
+              <div class="card-title">淨跑量</div>
+              <div class="card-value" style="color: #1890ff;">￥{{ totalNet.toLocaleString() }}</div>
+            </div>
+            <div class="card">
+              <div class="card-title">平台收益</div>
+              <div class="card-value" style="color: #f5222d;">￥{{ totalFee.toLocaleString() }}</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 style="margin: 0;">📊 代收付跑量總表 (全商戶動態結算)</h3>
+              <span style="font-size: 13px; color: #8c8c8c;">數據已即時同步商戶最新餘額變動</span>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>商戶名稱</th>
+                  <th>主要支付通道</th>
+                  <th>代收金額</th>
+                  <th>代付金額</th>
+                  <th>手續費</th>
+                  <th>目前最新餘額</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, idx) in combinedRunSummary" :key="idx">
+                  <td>{{ item.date }}</td>
+                  <td><strong>{{ item.merchant }}</strong></td>
+                  <td><span class="tag">{{ item.channel }}</span></td>
+                  <td style="color: #52c41a; font-weight: bold;">￥{{ item.collectAmt.toLocaleString() }}</td>
+                  <td style="color: #fa8c16; font-weight: bold;">￥{{ item.payoutAmt.toLocaleString() }}</td>
+                  <td style="color: #f5222d;">￥{{ item.feeAmt.toLocaleString() }}</td>
+                  <td style="color: #1890ff; font-weight: bold;">￥{{ item.currentBalance.toLocaleString('zh-CN', {minimumFractionDigits: 2}) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 2. 商戶下發與結算明細模組 (含歷史變動 Audit Log & CSV 導出) -->
+        <div v-else-if="activeMenu === 'payout_audit'" class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0;">💸 商戶下發與餘額結算歷史 (Balance Audit Log)</h3>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn" :class="payoutAuditTab === 'requests' ? 'btn-primary' : ''" @click="payoutAuditTab = 'requests'">📋 下發審核</button>
+              <button class="btn" :class="payoutAuditTab === 'logs' ? 'btn-primary' : ''" @click="payoutAuditTab = 'logs'">📜 餘額變動紀錄</button>
+              <button v-if="payoutAuditTab === 'logs'" class="btn btn-success" @click="exportBalanceLogsCSV">📥 導出商戶變動明細 CSV</button>
+            </div>
+          </div>
+
+          <!-- 商戶餘額動態卡片區 -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px;">
+            <div v-for="m in merchants" :key="m.id" style="background: #fafafa; border: 1px solid #f0f0f0; padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: bold;">{{ m.name }} <span style="font-size:12px; color:#8c8c8c;">({{ m.id }})</span></div>
+                <div style="color: #52c41a; font-weight: bold; margin-top: 4px; font-size: 16px;">￥{{ (m.rawBalance || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}) }}</div>
+              </div>
+              <button class="btn btn-warning" @click="openBalanceModal(m)">✏️ 調帳/充值</button>
+            </div>
+          </div>
+
+          <!-- 下發審核列表 Tab -->
+          <table v-if="payoutAuditTab === 'requests'" class="data-table">
+            <thead>
+              <tr>
+                <th>下發單號</th>
+                <th>商戶名稱</th>
+                <th>提現金額</th>
+                <th>收款帳號</th>
+                <th>狀態</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in payoutRequests" :key="item.id">
+                <td>{{ item.id }}</td>
+                <td><strong>{{ item.merchant }}</strong></td>
+                <td style="color: #fa8c16; font-weight: bold;">￥{{ item.rawAmount.toLocaleString() }}</td>
+                <td>{{ item.bank }}</td>
+                <td>
+                  <span :style="{ color: item.status === '待審核' ? '#fa8c16' : '#52c41a', fontWeight: 'bold' }">{{ item.status }}</span>
+                </td>
+                <td>
+                  <button v-if="item.status === '待審核'" class="btn btn-primary" @click="approvePayout(item)">同意打款並扣款</button>
+                  <span v-else style="color: #8c8c8c;">已完成結算</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 餘額變動紀錄 Tab (含動態篩選) -->
+          <div v-else>
+            <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+              <span style="font-weight: bold; font-size: 14px;">🔍 按商戶精確篩選：</span>
+              <select v-model="filterLogMerchant" class="select-control">
+                <option value="">全部商戶</option>
+                <option v-for="m in merchants" :key="m.id" :value="m.name">{{ m.name }}</option>
+              </select>
+            </div>
+
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th>商戶名稱</th>
+                  <th>變動類型</th>
+                  <th>變動前餘額</th>
+                  <th>變動金額</th>
+                  <th>變動後餘額</th>
+                  <th>理由/備註</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="log in filteredBalanceLogs" :key="log.id">
+                  <td style="font-size: 12px; color: #666;">{{ log.time }}</td>
+                  <td><strong>{{ log.merchantName }}</strong></td>
+                  <td><span class="tag">{{ log.type }}</span></td>
+                  <td>￥{{ log.beforeBal.toLocaleString('zh-CN', {minimumFractionDigits: 2}) }}</td>
+                  <td :style="{ color: log.changeAmt >= 0 ? '#52c41a' : '#f5222d', fontWeight: 'bold' }">
+                    {{ log.changeAmt >= 0 ? '+' : '' }}{{ log.changeAmt.toLocaleString('zh-CN', {minimumFractionDigits: 2}) }}
+                  </td>
+                  <td><strong>￥{{ log.afterBal.toLocaleString('zh-CN', {minimumFractionDigits: 2}) }}</strong></td>
+                  <td>{{ log.reason }}</td>
+                </tr>
+                <tr v-if="filteredBalanceLogs.length === 0">
+                  <td colspan="7" style="text-align: center; color: #999; padding: 24px;">查無該商戶的變動歷史紀錄</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 3. 其他分頁佔位 -->
+        <div v-else class="card" style="text-align: center; padding: 40px;">
+          <h3>已選擇模組：{{ activeMenu }}</h3>
+          <p style="color: #8c8c8c;">該功能模組正常運行中，請切換至「📊 代收付跑量總表」或「💸 商戶下發與結算明細」。</p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 調帳對話框 (Modal) -->
+    <div v-if="showBalanceModal" class="modal-backdrop">
+      <div class="modal-box">
+        <h3 style="margin-top:0; color: #1890ff;">✏️ 手動調整商戶餘額</h3>
+        <p>商戶名稱：<strong>{{ selectedMerchantForBalance?.name }}</strong></p>
+        <p style="font-size: 13px; color: #666;">目前餘額：￥{{ selectedMerchantForBalance?.rawBalance.toLocaleString() }}</p>
+        <div class="form-group">
+          <label>變更金額 (正數為充值/增加，負數為扣款/減少)：</label>
+          <input type="number" v-model.number="balanceAdjustAmount" placeholder="例如: 5000 或 -2000">
+        </div>
+        <div class="form-group">
+          <label>調整理由/備註：</label>
+          <input type="text" v-model="balanceAdjustReason" placeholder="例如: 收到線下銀行轉帳充值/手續費沖銷">
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;">
+          <button class="btn" @click="closeBalanceModal">取消</button>
+          <button class="btn btn-primary" @click="confirmBalanceAdjust">確認變更並同步結算</button>
+        </div>
+      </div>
+    </div>
+  `,
   data() {
     return {
       activeMenu: 'run_summary',
-      supplierTab: 'collect_status',
-      merchantTab: 'query',
-
-      // 查詢條件狀態
-      queryDate: '2026-08-12',
-      queryMonth: '2026-08',
-      supplierOrderNo: '',
-      systemOrderNo: '',
-      searchMerchantName: '', // 商戶篩選下拉選單綁定值
-      searchChannel: '',
-
-      // 編輯餘額彈窗控制
+      payoutAuditTab: 'requests',
+      filterLogMerchant: '',
       showBalanceModal: false,
       selectedMerchantForBalance: null,
       balanceAdjustAmount: 0,
       balanceAdjustReason: '',
 
-      // 新增商戶表單
-      newMerchant: {
-        customId: '',
-        name: '',
-        collectRate: '0.6%',
-        payoutRate: '0.3% + ￥2.00',
-        channelConfigs: {
-          alipay: { enabled: true, rate: '0.6%', limit: '50,000' },
-          wechat: { enabled: true, rate: '0.6%', limit: '20,000' },
-          linepay: { enabled: true, rate: '2.2%', limit: '30,000' },
-          ecpay: { enabled: false, rate: '2.85%', limit: '100,000' },
-          stripe: { enabled: false, rate: '3.4%', limit: '10,000' }
-        }
-      },
-
-      // 全局通道列表
-      paymentGateways: [
-        { id: 'alipay', name: '支付寶 (Alipay)', icon: '🟦', fee: '0.6%', status: true, weight: 80, trafficRate: '40%' },
-        { id: 'wechat', name: '微信支付 (WeChat Pay)', icon: '🟩', fee: '0.6%', status: true, weight: 80, trafficRate: '40%' },
-        { id: 'linepay', name: 'LINE Pay', icon: '🟢', fee: '2.2%', status: true, weight: 30, trafficRate: '15%' },
-        { id: 'ecpay', name: '綠界 ECPay (信用卡/超商)', icon: '🟧', fee: '2.85%', status: true, weight: 10, trafficRate: '5%' },
-        { id: 'stripe', name: 'Stripe (國際信用卡)', icon: '💜', fee: '3.4% + $0.30', status: false, weight: 0, trafficRate: '0%' }
+      menuItems: [
+        { key: 'run_summary', label: '📊 代收付跑量總表' },
+        { key: 'payout_audit', label: '💸 商戶下發與結算明細' },
+        { key: 'supplier', label: '🏭 供應商訂單管理' },
+        { key: 'collect', label: '📥 代收訂單管理' },
+        { key: 'payout', label: '📤 代付訂單管理' },
+        { key: 'merchant', label: '🏢 商戶管理與費率' }
       ],
 
-      // 代收付跑量總表數據
-      runSummaryList: [
-        { date: '2026-08-12', merchant: '閃電電商', channel: '微信支付', collectAmt: 158200, payoutAmt: 50000, feeAmt: 1249.20, netAmt: 106950.80, count: 420 },
-        { date: '2026-08-12', merchant: '海淘優選', channel: '支付寶', collectAmt: 89300, payoutAmt: 20000, feeAmt: 695.80, netAmt: 68604.20, count: 215 },
-        { date: '2026-08-12', merchant: '星光娛樂', channel: 'LINE Pay', collectAmt: 42500, payoutAmt: 8000, feeAmt: 1095.00, netAmt: 33405.00, count: 98 },
-        { date: '2026-08-11', merchant: '閃電電商', channel: '微信支付', collectAmt: 182000, payoutAmt: 65000, feeAmt: 1442.00, netAmt: 115558.00, count: 510 },
-        { date: '2026-08-11', merchant: '海淘優選', channel: '綠界 ECPay', collectAmt: 31000, payoutAmt: 12000, feeAmt: 907.50, netAmt: 18092.50, count: 76 }
-      ],
-
-      transactions: [
-        { id: 'TX-20260812-9901', channel: '微信支付', channelIcon: '🟩', orderId: 'BC-IN-2026081201', amount: '￥299.00', status: '交易成功', date: '2026-08-12' },
-        { id: 'TX-20260812-9902', channel: '支付寶', channelIcon: '🟦', orderId: 'BC-IN-2026081202', amount: '￥1,280.00', status: '交易成功', date: '2026-08-12' },
-        { id: 'TX-20260812-9903', channel: 'LINE Pay', channelIcon: '🟢', orderId: 'BC-OUT-2026081202', amount: 'NT$ 2,500', status: '交易成功', date: '2026-08-12' }
-      ],
-
-      supplierOrders: [
-        { suppOrderNo: 'SUP-COL-88091', sysOrderNo: 'BC-IN-2026081201', suppName: '極速支付通道A', amount: '￥5,000.00', status: '成功', matchType: '精準成功', date: '2026-08-12' },
-        { suppOrderNo: 'SUP-PAY-77102', sysOrderNo: 'BC-OUT-2026081202', suppName: '順達代付網關', amount: '￥12,300.00', status: '處理中', matchType: '精準確認說是', date: '2026-08-12' }
-      ],
-
-      collectOrders: [
-        { mchOrderNo: 'MCH-ORD-20260812-001', sysOrderNo: 'BC-IN-2026081201', suppOrderNo: 'SUP-COL-88091', merchant: '閃電電商', amount: '￥5,000.00', fee: '￥30.00', status: '已代收成功', date: '2026-08-12' },
-        { mchOrderNo: 'MCH-ORD-20260812-002', sysOrderNo: 'BC-IN-2026081202', suppOrderNo: 'SUP-COL-88095', merchant: '海淘優選', amount: '￥1,200.00', fee: '￥7.20', status: '等待支付', date: '2026-08-12' }
-      ],
-
-      payoutOrders: [
-        { mchOrderNo: 'MCH-WD-20260812-881', sysOrderNo: 'BC-OUT-2026081202', suppOrderNo: 'SUP-PAY-77102', merchant: '閃電電商', amount: '￥12,300.00', fee: '￥15.00', status: '代付處理中', date: '2026-08-12' },
-        { mchOrderNo: 'MCH-WD-20260811-992', sysOrderNo: 'BC-OUT-2026081109', suppOrderNo: 'SUP-PAY-76011', merchant: '星光娛樂', amount: '￥8,000.00', fee: '￥10.00', status: '代付成功', date: '2026-08-11' }
-      ],
-
+      // 擴充至 6+ 家測試商戶與真實數據
       merchants: [
-        { id: 'MCH-1001', name: '閃電電商', appKey: 'bc_live_99812a', status: '正常', collectRate: '0.6%', payoutRate: '0.3% + ￥2.00', rawBalance: 158200.00 },
-        { id: 'MCH-1002', name: '海淘優選', appKey: 'bc_live_33419b', status: '正常', collectRate: '0.8%', payoutRate: '0.5% + ￥2.00', rawBalance: 42100.00 },
-        { id: 'MCH-1003', name: '星光娛樂', appKey: 'bc_live_77103c', status: '正常', collectRate: '0.7%', payoutRate: '0.4% + ￥2.00', rawBalance: 33405.00 }
+        { id: 'MCH-1001', name: '閃電電商', rawBalance: 158200.00 },
+        { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00 },
+        { id: 'MCH-1003', name: '星光娛樂', rawBalance: 33405.00 },
+        { id: 'MCH-1004', name: '極速跨境', rawBalance: 289000.00 },
+        { id: 'MCH-1005', name: '極光數位', rawBalance: 12500.00 },
+        { id: 'MCH-1006', name: '華夏智付', rawBalance: 76400.00 }
       ],
 
+      // 豐富代收付與總表紀錄數據
+      runSummaryList: [
+        { date: '2026-08-12', merchant: '閃電電商', channel: '微信支付', collectAmt: 158200, payoutAmt: 50000, feeAmt: 1249.20 },
+        { date: '2026-08-12', merchant: '海淘優選', channel: '支付寶', collectAmt: 89300, payoutAmt: 20000, feeAmt: 695.80 },
+        { date: '2026-08-12', merchant: '星光娛樂', channel: 'LINE Pay', collectAmt: 42500, payoutAmt: 8000, feeAmt: 1095.00 },
+        { date: '2026-08-12', merchant: '極速跨境', channel: '支付寶', collectAmt: 310000, payoutAmt: 120000, feeAmt: 2015.00 },
+        { date: '2026-08-12', merchant: '極光數位', channel: '快捷支付', collectAmt: 52000, payoutAmt: 15000, feeAmt: 410.00 },
+        { date: '2026-08-12', merchant: '華夏智付', channel: '銀行卡直連', collectAmt: 145000, payoutAmt: 40000, feeAmt: 1150.00 }
+      ],
+
+      // 多筆下發審核單號
       payoutRequests: [
-        { id: 'WD-2026081201', merchant: '閃電電商', amount: '￥50,000.00', bank: '招商銀行 (尾號 8812)', status: '待審核', time: '2026-08-12 16:00' },
-        { id: 'WD-2026081105', merchant: '海淘優選', amount: '￥20,000.00', bank: '建設銀行 (尾號 4102)', status: '已下發', time: '2026-08-11 14:30' }
+        { id: 'WD-2026081201', merchant: '閃電電商', rawAmount: 50000.00, bank: '招商銀行 (尾號 8812)', status: '待審核' },
+        { id: 'WD-2026081202', merchant: '極速跨境', rawAmount: 80000.00, bank: '工商銀行 (尾號 1102)', status: '待審核' },
+        { id: 'WD-2026081203', merchant: '華夏智付', rawAmount: 30000.00, bank: '建設銀行 (尾號 9921)', status: '待審核' },
+        { id: 'WD-2026081204', merchant: '極光數位', rawAmount: 10000.00, bank: '中國銀行 (尾號 5543)', status: '待審核' },
+        { id: 'WD-2026081105', merchant: '海淘優選', rawAmount: 20000.00, bank: '建設銀行 (尾號 4102)', status: '已下發' }
+      ],
+
+      // 商戶變動歷史紀錄 Audit Logs
+      balanceLogs: [
+        { id: 'LOG-1001', merchantName: '閃電電商', type: '手動充值', beforeBal: 108200.00, changeAmt: 50000.00, afterBal: 158200.00, reason: '收到線上銀行轉帳充值', time: '2026-08-12 09:15:22' },
+        { id: 'LOG-1002', merchantName: '海淘優選', type: '下發扣款', beforeBal: 62100.00, changeAmt: -20000.00, afterBal: 42100.00, reason: '下發審核打款 [WD-2026081105]', time: '2026-08-12 10:30:10' },
+        { id: 'LOG-1003', merchantName: '極速跨境', type: '手動充值', beforeBal: 189000.00, changeAmt: 100000.00, afterBal: 289000.00, reason: '大額商戶押金預充', time: '2026-08-12 11:05:44' },
+        { id: 'LOG-1004', merchantName: '華夏智付', type: '手動扣除', beforeBal: 78000.00, changeAmt: -1600.00, afterBal: 76400.00, reason: '月度通道系統服務費扣除', time: '2026-08-12 11:20:00' }
       ]
     }
   },
-  created() {
-    const savedMerchants = localStorage.getItem(STORAGE_KEY_MERCHANTS)
-    if (savedMerchants) {
-      try {
-        this.merchants = JSON.parse(savedMerchants)
-      } catch(e) {
-        console.error(e)
-      }
-    }
+  computed: {
+    combinedRunSummary() {
+      return this.runSummaryList.map(item => {
+        const m = this.merchants.find(x => x.name === item.merchant)
+        return {
+          ...item,
+          currentBalance: m ? m.rawBalance : 0
+        }
+      })
+    },
+    filteredBalanceLogs() {
+      if (!this.filterLogMerchant) return this.balanceLogs;
+      return this.balanceLogs.filter(log => log.merchantName === this.filterLogMerchant);
+    },
+    totalCollect() { return this.runSummaryList.reduce((s, i) => s + i.collectAmt, 0); },
+    totalPayout() { return this.runSummaryList.reduce((s, i) => s + i.payoutAmt, 0); },
+    totalFee() { return this.runSummaryList.reduce((s, i) => s + i.feeAmt, 0); },
+    totalNet() { return this.totalCollect - this.totalPayout; }
   },
   methods: {
-    handleSelectMenu(key) {
-      this.activeMenu = key
-    },
-    toggleGateway(gateway) {
-      gateway.status = !gateway.status
-    },
-    submitCreateMerchant() {
-      if (!this.newMerchant.name) {
-        alert('請輸入商戶名稱')
-        return
-      }
-      const finalId = this.newMerchant.customId.trim() || `MCH-${1000 + this.merchants.length + 1}`
-      const newKey = `bc_live_${Math.random().toString(36).substring(2, 8)}`
-      const item = {
-        id: finalId,
-        name: this.newMerchant.name,
-        appKey: newKey,
-        status: '正常',
-        collectRate: this.newMerchant.collectRate || '0.6%',
-        payoutRate: this.newMerchant.payoutRate || '0.3% + ￥2.00',
-        channelConfigs: JSON.parse(JSON.stringify(this.newMerchant.channelConfigs)),
-        rawBalance: 0.00
-      }
-      this.merchants.push(item)
-      localStorage.setItem(STORAGE_KEY_MERCHANTS, JSON.stringify(this.merchants))
-      alert(`商戶 [${this.newMerchant.name}] 新增成功！商戶號: ${finalId}`)
-      this.newMerchant.name = ''
-      this.newMerchant.customId = ''
-      this.merchantTab = 'query'
-    },
-    approvePayout(item) {
-      item.status = '已下發'
-      alert(`已成功同意下發單號: ${item.id}，資金已結算！`)
-    },
-    openBalanceModal(merchant) {
-      this.selectedMerchantForBalance = merchant
-      this.balanceAdjustAmount = 0
-      this.balanceAdjustReason = ''
-      this.showBalanceModal = true
+    openBalanceModal(m) {
+      this.selectedMerchantForBalance = m;
+      this.balanceAdjustAmount = 0;
+      this.balanceAdjustReason = '';
+      this.showBalanceModal = true;
     },
     closeBalanceModal() {
-      this.showBalanceModal = false
-      this.selectedMerchantForBalance = null
+      this.showBalanceModal = false;
     },
+    // 手動調帳（充值/扣款/沖銷），並寫入 Audit Log
     confirmBalanceAdjust() {
-      if (!this.selectedMerchantForBalance) return
-      const adj = parseFloat(this.balanceAdjustAmount)
-      if (isNaN(adj) || adj === 0) {
-        alert('請輸入有效的變更金額！')
-        return
+      if (!this.balanceAdjustAmount) return alert('請輸入調整金額');
+      if (!this.balanceAdjustReason) return alert('請輸入理由');
+      
+      const m = this.selectedMerchantForBalance;
+      const before = m.rawBalance || 0;
+      const change = Number(this.balanceAdjustAmount);
+      const after = before + change;
+      
+      m.rawBalance = after;
+
+      this.balanceLogs.unshift({
+        id: 'LOG-' + Date.now(),
+        merchantName: m.name,
+        type: change >= 0 ? '手動充值' : '手動扣款',
+        beforeBal: before,
+        changeAmt: change,
+        afterBal: after,
+        reason: this.balanceAdjustReason,
+        time: new Date().toLocaleString('zh-TW', { hour12: false })
+      });
+      
+      alert(`調帳成功！${m.name} 最新餘額為：￥${after.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`);
+      this.closeBalanceModal();
+    },
+    // 同意打款，扣除餘額並寫入 Audit Log
+    approvePayout(item) {
+      const m = this.merchants.find(x => x.name === item.merchant);
+      if (m) {
+        if (m.rawBalance < item.rawAmount) {
+          return alert(`無法下發！商戶 ${m.name} 的當前餘額 (￥${m.rawBalance.toLocaleString()}) 不足支付 ￥${item.rawAmount.toLocaleString()}`);
+        }
+        const before = m.rawBalance;
+        const change = -item.rawAmount;
+        m.rawBalance = before + change;
+
+        this.balanceLogs.unshift({
+          id: 'LOG-' + Date.now(),
+          merchantName: m.name,
+          type: '下發扣款',
+          beforeBal: before,
+          changeAmt: change,
+          afterBal: m.rawBalance,
+          reason: `審核通過下發 [${item.id}]`,
+          time: new Date().toLocaleString('zh-TW', { hour12: false })
+        });
       }
-      if (!this.balanceAdjustReason.trim()) {
-        alert('請輸入調整理由！')
-        return
+      item.status = '已下發';
+      alert('已批准打款，商戶結算餘額與變動歷史已同步更新！');
+    },
+    // 導出商戶變動明細 CSV 功能
+    exportBalanceLogsCSV() {
+      const logs = this.filteredBalanceLogs;
+      if (logs.length === 0) {
+        return alert('當前無可導出的變動歷史紀錄！');
       }
-      this.selectedMerchantForBalance.rawBalance = (this.selectedMerchantForBalance.rawBalance || 0) + adj
-      localStorage.setItem(STORAGE_KEY_MERCHANTS, JSON.stringify(this.merchants))
-      alert(`成功調整商戶 [${this.selectedMerchantForBalance.name}] 餘額！\n變更金額: ${adj >= 0 ? '+' : ''}${adj}\n理由: ${this.balanceAdjustReason}`)
-      this.closeBalanceModal()
-    },
-    // 通用 CSV 匯出邏輯
-    exportReportCSV(filename, rows) {
-      let csvContent = "data:text/csv;charset=utf-8,\uFEFF"
-      rows.forEach(row => {
-        csvContent += row.map(v => `"${v}"`).join(",") + "\n"
-      })
-      const encodedUri = encodeURI(csvContent)
-      const link = document.createElement("a")
-      link.setAttribute("href", encodedUri)
-      link.setAttribute("download", `${filename}_${new Date().toISOString().slice(0,10)}.csv`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    },
-    // v2.2.4 獨立匯出代收結算報表
-    exportCollectReport(filteredData) {
-      const mName = this.searchMerchantName ? this.searchMerchantName : '全部商戶'
-      const rows = [
-        ["日期", "商戶名稱", "支付通道", "代收金額", "預估手續費", "交易筆數"],
-        ...filteredData.map(i => [i.date, i.merchant, i.channel, i.collectAmt, (i.collectAmt * 0.006).toFixed(2), i.count])
-      ]
-      this.exportReportCSV(`代收結算報表_${mName}`, rows)
-    },
-    // v2.2.4 獨立匯出代付結算報表
-    exportPayoutReport(filteredData) {
-      const mName = this.searchMerchantName ? this.searchMerchantName : '全部商戶'
-      const rows = [
-        ["日期", "商戶名稱", "支付通道", "代付金額", "預估手續費", "交易筆數"],
-        ...filteredData.map(i => [i.date, i.merchant, i.channel, i.payoutAmt, (i.payoutAmt * 0.003 + 2).toFixed(2), i.count])
-      ]
-      this.exportReportCSV(`代付結算報表_${mName}`, rows)
+
+      let csvContent = '\uFEFF'; // 加入 UTF-8 BOM 避免 Excel 開啟亂碼
+      csvContent += '紀錄ID,時間,商戶名稱,變動類型,變動前餘額,變動金額,變動後餘額,理由/備註\n';
+
+      logs.forEach(l => {
+        const row = [
+          l.id,
+          `"${l.time}"`,
+          `"${l.merchantName}"`,
+          `"${l.type}"`,
+          l.beforeBal,
+          l.changeAmt,
+          l.afterBal,
+          `"${l.reason.replace(/"/g, '""')}"`
+        ];
+        csvContent += row.join(',') + '\n';
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const filename = this.filterLogMerchant 
+        ? `${this.filterLogMerchant}_餘額變動明細_${new Date().toISOString().slice(0,10)}.csv`
+        : `全商戶_餘額變動明細_${new Date().toISOString().slice(0,10)}.csv`;
+
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
-  },
-  render() {
-    // 跑量過濾條件邏輯 (支援商戶選擇框精準過濾)
-    const filteredRunSummary = this.runSummaryList.filter(item => {
-      const matchDate = !this.queryDate || item.date === this.queryDate
-      const matchMerchant = !this.searchMerchantName || item.merchant === this.searchMerchantName
-      const matchChannel = !this.searchChannel || item.channel.includes(this.searchChannel)
-      return matchDate && matchMerchant && matchChannel
-    })
-
-    const totalCollect = filteredRunSummary.reduce((sum, i) => sum + i.collectAmt, 0)
-    const totalPayout = filteredRunSummary.reduce((sum, i) => sum + i.payoutAmt, 0)
-    const totalFee = filteredRunSummary.reduce((sum, i) => sum + i.feeAmt, 0)
-    const totalNet = filteredRunSummary.reduce((sum, i) => sum + i.netAmt, 0)
-
-    const renderFilterHeader = (isSupplier = false) => h('div', { style: 'background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;' }, [
-      h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '按日查詢:'),
-        h('input', { type: 'date', value: this.queryDate, onInput: e => this.queryDate = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-      ]),
-      h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '按月查詢:'),
-        h('input', { type: 'month', value: this.queryMonth, onInput: e => this.queryMonth = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-      ]),
-      isSupplier ? h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '供應商單號:'),
-        h('input', { placeholder: '輸入供應商單號...', value: this.supplierOrderNo, onInput: e => this.supplierOrderNo = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-      ]) : null,
-      h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, 'BC pay單號:'),
-        h('input', { placeholder: '輸入BC pay單號...', value: this.systemOrderNo, onInput: e => this.systemOrderNo = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-      ]),
-      h('button', { onClick: () => this.$forceUpdate(), style: 'background: #1890ff; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer;' }, '🔍 檢索')
-    ])
-
-    // 1. 📊 代收付跑量總表 (v2.2.4 升級版：含商戶選擇框與獨立分開導出功能)
-    const renderRunSummaryModule = () => h('div', [
-      h('div', { style: 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px;' }, [
-        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
-          h('div', { style: 'color: #8c8c8c; font-size: 13px;' }, '當前統計總代收額'),
-          h('div', { style: 'font-size: 24px; font-weight: bold; color: #52c41a; margin-top: 8px;' }, `￥${totalCollect.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
-        ]),
-        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
-          h('div', { style: 'color: #8c8c8c; font-size: 13px;' }, '當前統計總代付額'),
-          h('div', { style: 'font-size: 24px; font-weight: bold; color: #fa8c16; margin-top: 8px;' }, `￥${totalPayout.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
-        ]),
-        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
-          h('div', { style: 'color: #8c8c8c; font-size: 13px;' }, '淨跑量 (代收 - 代付)'),
-          h('div', { style: 'font-size: 24px; font-weight: bold; color: #1890ff; margin-top: 8px;' }, `￥${totalNet.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
-        ]),
-        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
-          h('div', { style: 'color: #8c8c8c; font-size: 13px;' }, '平台手續費收益'),
-          h('div', { style: 'font-size: 24px; font-weight: bold; color: #f5222d; margin-top: 8px;' }, `￥${totalFee.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
-        ])
-      ]),
-      h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;' }, [
-          h('h3', { style: 'margin: 0;' }, '📊 代收付跑量總表'),
-          h('div', { style: 'display: flex; gap: 10px;' }, [
-            h('button', { 
-              onClick: () => this.exportCollectReport(filteredRunSummary),
-              style: 'background: #52c41a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;' 
-            }, '📥 導出代收結算報表 CSV'),
-            h('button', { 
-              onClick: () => this.exportPayoutReport(filteredRunSummary),
-              style: 'background: #fa8c16; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;' 
-            }, '📤 導出代付結算報表 CSV')
-          ])
-        ]),
-        h('div', { style: 'background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;' }, [
-          h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-            h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '日期:'),
-            h('input', { type: 'date', value: this.queryDate, onInput: e => this.queryDate = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ]),
-          // ⭐ v2.2.4 新增：商戶專屬下拉選擇框
-          h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-            h('label', { style: 'font-size: 13px; font-weight: bold; color: #1890ff;' }, '選擇商戶:'),
-            h('select', { 
-              value: this.searchMerchantName, 
-              onChange: e => this.searchMerchantName = e.target.value, 
-              style: 'padding: 6px 12px; border: 1px solid #1890ff; border-radius: 4px; outline: none; background: #fff; font-weight: bold;' 
-            }, [
-              h('option', { value: '' }, '-- 全部商戶 --'),
-              ...this.merchants.map(m => h('option', { value: m.name }, `${m.name} (${m.id})`))
-            ])
-          ]),
-          h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-            h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '通道名稱:'),
-            h('input', { placeholder: '搜尋通道...', value: this.searchChannel, onInput: e => this.searchChannel = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ])
-        ]),
-        h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
-          h('thead', {}, [
-            h('tr', { style: 'background: #f5f7fa; border-bottom: 2px solid #e4e7ed;' }, [
-              h('th', { style: 'padding: 12px;' }, '日期'),
-              h('th', { style: 'padding: 12px;' }, '商戶名稱'),
-              h('th', { style: 'padding: 12px;' }, '支付通道'),
-              h('th', { style: 'padding: 12px;' }, '代收金額'),
-              h('th', { style: 'padding: 12px;' }, '代付金額'),
-              h('th', { style: 'padding: 12px;' }, '手續費'),
-              h('th', { style: 'padding: 12px;' }, '淨結算金額'),
-              h('th', { style: 'padding: 12px;' }, '總筆數')
-            ])
-          ]),
-          h('tbody', {}, filteredRunSummary.length ? filteredRunSummary.map(item => 
-            h('tr', { style: 'border-bottom: 1px solid #ebedf0;' }, [
-              h('td', { style: 'padding: 12px; color: #606266;' }, item.date),
-              h('td', { style: 'padding: 12px; font-weight: bold;' }, item.merchant),
-              h('td', { style: 'padding: 12px;' }, item.channel),
-              h('td', { style: 'padding: 12px; color: #52c41a; font-weight: bold;' }, `￥${item.collectAmt.toLocaleString()}`),
-              h('td', { style: 'padding: 12px; color: #fa8c16; font-weight: bold;' }, `￥${item.payoutAmt.toLocaleString()}`),
-              h('td', { style: 'padding: 12px; color: #f5222d;' }, `￥${item.feeAmt.toLocaleString()}`),
-              h('td', { style: 'padding: 12px; color: #1890ff; font-weight: bold;' }, `￥${item.netAmt.toLocaleString()}`),
-              h('td', { style: 'padding: 12px;' }, h('span', { style: 'background: #e6f7ff; color: #1890ff; padding: 2px 8px; border-radius: 10px; font-size: 12px;' }, `${item.count} 筆`))
-            ])
-          ) : [h('tr', {}, [h('td', { colspan: 8, style: 'text-align: center; padding: 24px; color: #909399;' }, '查無對應跑量紀錄')])])
-        ])
-      ])
-    ])
-
-    // 2. 📈 支付數據大屏
-    const renderPaymentOverview = () => h('div', [
-      h('div', { style: 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px;' }, [
-        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '今日代收總額'),
-          h('div', { style: 'font-size: 26px; font-weight: bold; margin: 8px 0;' }, '￥328,520.00'),
-          h('div', { style: 'color: #67c23a; font-size: 12px;' }, '成功率 99.1%')
-        ]),
-        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '今日代付總額'),
-          h('div', { style: 'font-size: 26px; font-weight: bold; color: #e6a23c; margin: 8px 0;' }, '￥142,100.00'),
-          h('div', { style: 'color: #409eff; font-size: 12px;' }, '完成率 98.5%')
-        ]),
-        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '平台開戶商戶'),
-          h('div', { style: 'font-size: 26px; font-weight: bold; color: #409eff; margin: 8px 0;' }, `${this.merchants.length} 家`),
-          h('div', { style: 'color: #67c23a; font-size: 12px;' }, '已全部激活')
-        ]),
-        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '待處理下發'),
-          h('div', { style: 'font-size: 26px; font-weight: bold; color: #f56c6c; margin: 8px 0;' }, `${this.payoutRequests.filter(p => p.status === '待審核').length} 筆`),
-          h('div', { style: 'color: #909399; font-size: 12px;' }, '需要財務審核')
-        ])
-      ]),
-      h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-        h('h3', { style: 'margin-top: 0;' }, '即時交易流水'),
-        h('table', { style: 'width: 100%; border-collapse: collapse;' }, [
-          h('thead', {}, [
-            h('tr', { style: 'background: #fafafa; border-bottom: 1px solid #f0f0f0; text-align: left;' }, [
-              h('th', { style: 'padding: 12px;' }, '交易單號'),
-              h('th', { style: 'padding: 12px;' }, '支付通道'),
-              h('th', { style: 'padding: 12px;' }, '系統單號'),
-              h('th', { style: 'padding: 12px;' }, '金額'),
-              h('th', { style: 'padding: 12px;' }, '狀態')
-            ])
-          ]),
-          h('tbody', {}, this.transactions.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
-            h('td', { style: 'padding: 12px;' }, item.id),
-            h('td', { style: 'padding: 12px;' }, `${item.channelIcon} ${item.channel}`),
-            h('td', { style: 'padding: 12px;' }, item.orderId),
-            h('td', { style: 'padding: 12px; font-weight: bold;' }, item.amount),
-            h('td', { style: 'padding: 12px; color: #52c41a;' }, item.status)
-          ])))
-        ])
-      ])
-    ])
-
-    // 3. 🏭 供應商
-    const renderSupplierModule = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '🏭 供應商訂單管理中心'),
-      renderFilterHeader(true),
-      h('table', { style: 'width: 100%; border-collapse: collapse;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #fafafa; border-bottom: 1px solid #f0f0f0; text-align: left;' }, [
-            h('th', { style: 'padding: 12px;' }, '供應商單號'),
-            h('th', { style: 'padding: 12px;' }, 'BC Pay 單號'),
-            h('th', { style: 'padding: 12px;' }, '供應商名稱'),
-            h('th', { style: 'padding: 12px;' }, '金額'),
-            h('th', { style: 'padding: 12px;' }, '對帳狀態')
-          ])
-        ]),
-        h('tbody', {}, this.supplierOrders.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
-          h('td', { style: 'padding: 12px;' }, item.suppOrderNo),
-          h('td', { style: 'padding: 12px;' }, item.sysOrderNo),
-          h('td', { style: 'padding: 12px;' }, item.suppName),
-          h('td', { style: 'padding: 12px; font-weight: bold;' }, item.amount),
-          h('td', { style: 'padding: 12px; color: #1890ff;' }, item.matchType)
-        ])))
-      ])
-    ])
-
-    // 4. 📥 代收訂單
-    const renderCollectOrders = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '📥 代收訂單管理'),
-      renderFilterHeader(false),
-      h('table', { style: 'width: 100%; border-collapse: collapse;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #fafafa; border-bottom: 1px solid #f0f0f0; text-align: left;' }, [
-            h('th', { style: 'padding: 12px; color: #1890ff;' }, '商戶訂單號'),
-            h('th', { style: 'padding: 12px;' }, '系統單號'),
-            h('th', { style: 'padding: 12px;' }, '商戶名稱'),
-            h('th', { style: 'padding: 12px;' }, '代收金額'),
-            h('th', { style: 'padding: 12px;' }, '手續費'),
-            h('th', { style: 'padding: 12px;' }, '狀態')
-          ])
-        ]),
-        h('tbody', {}, this.collectOrders.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
-          h('td', { style: 'padding: 12px; font-weight: bold; color: #262626;' }, item.mchOrderNo),
-          h('td', { style: 'padding: 12px;' }, item.sysOrderNo),
-          h('td', { style: 'padding: 12px;' }, item.merchant),
-          h('td', { style: 'padding: 12px; color: #52c41a; font-weight: bold;' }, item.amount),
-          h('td', { style: 'padding: 12px;' }, item.fee),
-          h('td', { style: 'padding: 12px; color: #1890ff;' }, item.status)
-        ])))
-      ])
-    ])
-
-    // 5. 📤 代付訂單
-    const renderPayoutOrders = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '📤 代付訂單管理'),
-      renderFilterHeader(false),
-      h('table', { style: 'width: 100%; border-collapse: collapse;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #fafafa; border-bottom: 1px solid #f0f0f0; text-align: left;' }, [
-            h('th', { style: 'padding: 12px; color: #1890ff;' }, '商戶訂單號'),
-            h('th', { style: 'padding: 12px;' }, '系統單號'),
-            h('th', { style: 'padding: 12px;' }, '商戶名稱'),
-            h('th', { style: 'padding: 12px;' }, '代付金額'),
-            h('th', { style: 'padding: 12px;' }, '手續費'),
-            h('th', { style: 'padding: 12px;' }, '狀態')
-          ])
-        ]),
-        h('tbody', {}, this.payoutOrders.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
-          h('td', { style: 'padding: 12px; font-weight: bold; color: #262626;' }, item.mchOrderNo),
-          h('td', { style: 'padding: 12px;' }, item.sysOrderNo),
-          h('td', { style: 'padding: 12px;' }, item.merchant),
-          h('td', { style: 'padding: 12px; color: #fa8c16; font-weight: bold;' }, item.amount),
-          h('td', { style: 'padding: 12px;' }, item.fee),
-          h('td', { style: 'padding: 12px; color: #52c41a;' }, item.status)
-        ])))
-      ])
-    ])
-
-    // 6. 🏢 商戶列表
-    const renderMerchantSettings = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('div', { style: 'display: flex; gap: 12px; margin-bottom: 20px;' }, [
-        h('button', { onClick: () => this.merchantTab = 'query', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: ${this.merchantTab === 'query' ? '#1890ff' : '#f0f0f0'}; color: ${this.merchantTab === 'query' ? '#fff' : '#000'};` }, '商戶列表'),
-        h('button', { onClick: () => this.merchantTab = 'add', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: ${this.merchantTab === 'add' ? '#1890ff' : '#f0f0f0'}; color: ${this.merchantTab === 'add' ? '#fff' : '#000'};` }, '+ 新增商戶')
-      ]),
-      this.merchantTab === 'query' ? h('table', { style: 'width: 100%; border-collapse: collapse;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #fafafa; border-bottom: 1px solid #f0f0f0; text-align: left;' }, [
-            h('th', { style: 'padding: 12px;' }, '商戶號'),
-            h('th', { style: 'padding: 12px;' }, '商戶名稱'),
-            h('th', { style: 'padding: 12px;' }, '代收總費率'),
-            h('th', { style: 'padding: 12px;' }, '代付總費率'),
-            h('th', { style: 'padding: 12px; color: #1890ff;' }, '商戶餘額')
-          ])
-        ]),
-        h('tbody', {}, this.merchants.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
-          h('td', { style: 'padding: 12px; font-weight: 500;' }, item.id),
-          h('td', { style: 'padding: 12px; font-weight: bold;' }, item.name),
-          h('td', { style: 'padding: 12px;' }, item.collectRate || '0.6%'),
-          h('td', { style: 'padding: 12px;' }, item.payoutRate || '0.3% + ￥2.00'),
-          h('td', { style: 'padding: 12px; color: #52c41a; font-weight: bold;' }, `￥${(item.rawBalance || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
-        ])))
-      ]) : h('div', { style: 'max-width: 720px; background: #fafafa; padding: 20px; border-radius: 8px; border: 1px solid #f0f0f0;' }, [
-        h('h4', { style: 'margin-top: 0; color: #1890ff;' }, '➕ 新增商戶'),
-        h('div', { style: 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;' }, [
-          h('div', {}, [
-            h('label', { style: 'display: block; margin-bottom: 6px; font-weight: bold;' }, '商戶名稱:'),
-            h('input', { value: this.newMerchant.name, onInput: e => this.newMerchant.name = e.target.value, placeholder: '請輸入商戶公司或平台名稱', style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ]),
-          h('div', {}, [
-            h('label', { style: 'display: block; margin-bottom: 6px; font-weight: bold;' }, '自訂商戶號 (可選):'),
-            h('input', { value: this.newMerchant.customId, onInput: e => this.newMerchant.customId = e.target.value, placeholder: '留空將自動生成 (例: MCH-888)', style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ])
-        ]),
-        h('div', { style: 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;' }, [
-          h('div', {}, [
-            h('label', { style: 'display: block; margin-bottom: 6px; font-weight: bold;' }, '預設代收費率 (%):'),
-            h('input', { value: this.newMerchant.collectRate, onInput: e => this.newMerchant.collectRate = e.target.value, placeholder: '例：0.6%', style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ]),
-          h('div', {}, [
-            h('label', { style: 'display: block; margin-bottom: 6px; font-weight: bold;' }, '預設代付費率/單筆:'),
-            h('input', { value: this.newMerchant.payoutRate, onInput: e => this.newMerchant.payoutRate = e.target.value, placeholder: '例：0.3% + ￥2.00', style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ])
-        ]),
-        
-        h('div', { style: 'border-top: 1px dashed #ccc; padding-top: 16px; margin-top: 16px;' }, [
-          h('label', { style: 'display: block; margin-bottom: 12px; font-weight: bold; color: #262626;' }, '⚙️ 各別渠道開關、費率與單筆限額調整:'),
-          ...this.paymentGateways.map(gw => {
-            if (!this.newMerchant.channelConfigs[gw.id]) {
-              this.newMerchant.channelConfigs[gw.id] = { enabled: true, rate: gw.fee, limit: '50,000' }
-            }
-            const cfg = this.newMerchant.channelConfigs[gw.id]
-            return h('div', { style: 'display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #ebedf0;' }, [
-              h('div', { style: 'display: flex; align-items: center; gap: 8px; min-width: 180px;' }, [
-                h('span', {}, gw.icon),
-                h('span', { style: 'font-weight: 500;' }, gw.name)
-              ]),
-              h('div', { style: 'display: flex; align-items: center; gap: 12px;' }, [
-                h('div', { style: 'display: flex; align-items: center; gap: 4px;' }, [
-                  h('label', { style: 'font-size: 12px; color: #606266;' }, '專屬費率:'),
-                  h('input', { value: cfg.rate, onInput: e => cfg.rate = e.target.value, style: 'width: 70px; padding: 4px 6px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 12px;' })
-                ]),
-                h('div', { style: 'display: flex; align-items: center; gap: 4px;' }, [
-                  h('label', { style: 'font-size: 12px; color: #606266;' }, '單筆限額:'),
-                  h('input', { value: cfg.limit, onInput: e => cfg.limit = e.target.value, placeholder: '限額', style: 'width: 85px; padding: 4px 6px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 12px;' })
-                ]),
-                h('button', { 
-                  onClick: () => cfg.enabled = !cfg.enabled, 
-                  style: `border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; color: white; background: ${cfg.enabled ? '#52c41a' : '#bfbfbf'};` 
-                }, cfg.enabled ? '已開通' : '未開通')
-              ])
-            ])
-          })
-        ]),
-
-        h('button', { onClick: () => this.submitCreateMerchant(), style: 'background: #1890ff; color: white; border: none; padding: 10px 24px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 16px;' }, '🚀 完成新增商戶')
-      ])
-    ])
-
-    // 7. 💸 商戶下發
-    const renderMerchantPayout = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;' }, [
-        h('h3', { style: 'margin: 0;' }, '💸 商戶下發審核打款'),
-        h('span', { style: 'font-size: 13px; color: #8c8c8c;' }, '點擊下方商戶右側可直接調整餘額')
-      ]),
-
-      h('h4', { style: 'color: #1890ff; margin-bottom: 12px;' }, '💰 各商戶實時餘額概覽'),
-      h('div', { style: 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px;' }, 
-        this.merchants.map(m => h('div', { style: 'background: #fafafa; border: 1px solid #f0f0f0; padding: 12px 16px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;' }, [
-          h('div', {}, [
-            h('div', { style: 'font-weight: bold; font-size: 14px;' }, m.name),
-            h('div', { style: 'color: #52c41a; font-weight: bold; font-size: 16px; margin-top: 4px;' }, `￥${(m.rawBalance || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
-          ]),
-          h('button', { onClick: () => this.openBalanceModal(m), style: 'background: #fa8c16; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;' }, '✏️ 編輯餘額')
-        ]))
-      ),
-
-      h('h4', { style: 'margin-bottom: 12px;' }, '📋 下發申請審核列表'),
-      h('table', { style: 'width: 100%; border-collapse: collapse;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #fafafa; border-bottom: 1px solid #f0f0f0; text-align: left;' }, [
-            h('th', { style: 'padding: 12px;' }, '下發單號'),
-            h('th', { style: 'padding: 12px;' }, '商戶名稱'),
-            h('th', { style: 'padding: 12px;' }, '提現金額'),
-            h('th', { style: 'padding: 12px;' }, '收款帳戶'),
-            h('th', { style: 'padding: 12px;' }, '申請時間'),
-            h('th', { style: 'padding: 12px;' }, '狀態'),
-            h('th', { style: 'padding: 12px;' }, '操作')
-          ])
-        ]),
-        h('tbody', {}, this.payoutRequests.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
-          h('td', { style: 'padding: 12px;' }, item.id),
-          h('td', { style: 'padding: 12px; font-weight: bold;' }, item.merchant),
-          h('td', { style: 'padding: 12px; color: #fa8c16; font-weight: bold;' }, item.amount),
-          h('td', { style: 'padding: 12px;' }, item.bank),
-          h('td', { style: 'padding: 12px; color: #8c8c8c; font-size: 12px;' }, item.time),
-          h('td', { style: 'padding: 12px;' }, h('span', { style: `padding: 2px 8px; border-radius: 10px; font-size: 12px; background: ${item.status === '待審核' ? '#fff7e6' : '#f6ffed'}; color: ${item.status === '待審核' ? '#fa8c16' : '#52c41a'};` }, item.status)),
-          h('td', { style: 'padding: 12px;' }, item.status === '待審核' ? h('button', { onClick: () => this.approvePayout(item), style: 'background: #1890ff; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;' }, '同意打款') : '-')
-        ])))
-      ])
-    ])
-
-    // ✏️ 餘額調整 Modal 彈窗
-    const renderBalanceModal = () => !this.showBalanceModal ? null : h('div', {
-      style: 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999;'
-    }, [
-      h('div', { style: 'background: #fff; border-radius: 8px; width: 420px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);' }, [
-        h('h3', { style: 'margin-top: 0; color: #1890ff;' }, `✏️ 手動調整商戶餘額`),
-        h('div', { style: 'margin-bottom: 12px; font-size: 14px;' }, [
-          h('span', { style: 'color: #606266;' }, '商戶名稱：'),
-          h('strong', {}, this.selectedMerchantForBalance?.name)
-        ]),
-        h('div', { style: 'margin-bottom: 16px; font-size: 14px;' }, [
-          h('span', { style: 'color: #606266;' }, '當前餘額：'),
-          h('strong', { style: 'color: #52c41a;' }, `￥${(this.selectedMerchantForBalance?.rawBalance || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
-        ]),
-        h('div', { style: 'margin-bottom: 16px;' }, [
-          h('label', { style: 'display: block; font-size: 13px; font-weight: bold; margin-bottom: 6px;' }, '變更金額 (增加寫正數，減少寫負數):'),
-          h('input', { 
-            type: 'number', 
-            value: this.balanceAdjustAmount, 
-            onInput: e => this.balanceAdjustAmount = e.target.value,
-            placeholder: '例如: 5000 或 -2000',
-            style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box;' 
-          })
-        ]),
-        h('div', { style: 'margin-bottom: 20px;' }, [
-          h('label', { style: 'display: block; font-size: 13px; font-weight: bold; margin-bottom: 6px;' }, '調整理由/備註:'),
-          h('input', { 
-            value: this.balanceAdjustReason, 
-            onInput: e => this.balanceAdjustReason = e.target.value,
-            placeholder: '請輸入調帳理由 (例: 補單充值 / 沖銷)',
-            style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; box-sizing: border-box;' 
-          })
-        ]),
-        h('div', { style: 'display: flex; justify-content: flex-end; gap: 12px;' }, [
-          h('button', { onClick: () => this.closeBalanceModal(), style: 'padding: 8px 16px; border: 1px solid #dcdfe6; background: #fff; border-radius: 4px; cursor: pointer;' }, '取消'),
-          h('button', { onClick: () => this.confirmBalanceAdjust(), style: 'padding: 8px 16px; border: none; background: #1890ff; color: white; border-radius: 4px; cursor: pointer; font-weight: bold;' }, '確認調整')
-        ])
-      ])
-    ])
-
-    // 主選單對應模組選取器
-    const renderActiveModule = () => {
-      switch (this.activeMenu) {
-        case 'run_summary': return renderRunSummaryModule()
-        case 'overview': return renderPaymentOverview()
-        case 'supplier': return renderSupplierModule()
-        case 'collect': return renderCollectOrders()
-        case 'payout': return renderPayoutOrders()
-        case 'merchant': return renderMerchantSettings()
-        case 'payout_audit': return renderMerchantPayout()
-        default: return renderRunSummaryModule()
-      }
-    }
-
-    // 系統整體 UI 渲染框架
-    return h('div', { style: 'display: flex; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5;' }, [
-      // 側邊欄 Sidebar
-      h('div', { style: 'width: 220px; background: #001529; color: white; flex-shrink: 0;' }, [
-        h('div', { style: 'padding: 20px 16px; font-size: 18px; font-weight: bold; color: #1890ff; border-bottom: 1px solid #002140;' }, '💳 BCPay 管理系統'),
-        h('div', { style: 'padding: 10px 0;' }, [
-          [
-            { key: 'run_summary', label: '📊 代收付跑量總表' },
-            { key: 'overview', label: '📈 數據大屏概覽' },
-            { key: 'supplier', label: '🏭 供應商訂單管理' },
-            { key: 'collect', label: '📥 代收訂單管理' },
-            { key: 'payout', label: '📤 代付訂單管理' },
-            { key: 'merchant', label: '🏢 商戶管理與費率' },
-            { key: 'payout_audit', label: '💸 商戶下發與提現' }
-          ].map(menu => h('div', {
-            onClick: () => this.handleSelectMenu(menu.key),
-            style: `padding: 12px 20px; cursor: pointer; font-size: 14px; transition: all 0.3s; background: ${this.activeMenu === menu.key ? '#1890ff' : 'transparent'}; color: ${this.activeMenu === menu.key ? '#fff' : 'rgba(255,255,255,0.65)'}`
-          }, menu.label))
-        ])
-      ]),
-
-      // 右側內容區 Content Area
-      h('div', { style: 'flex: 1; padding: 24px; overflow-y: auto;' }, [
-        renderActiveModule(),
-        renderBalanceModal()
-      ])
-    ])
   }
 })
+
+// 自動注入頁面樣式
+const style = document.createElement('style')
+style.innerHTML = `
+  * { box-sizing: border-box; }
+  .layout-container { display: flex; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .sidebar { width: 220px; background: #001529; color: white; flex-shrink: 0; }
+  .sidebar-logo { padding: 20px 16px; font-size: 18px; font-weight: bold; color: #1890ff; border-bottom: 1px solid #002140; }
+  .menu-item { padding: 12px 20px; cursor: pointer; font-size: 14px; color: rgba(255,255,255,0.65); transition: 0.2s; }
+  .menu-item:hover, .menu-item.active { background: #1890ff; color: #fff; }
+  .main-content { flex: 1; padding: 24px; overflow-y: auto; }
+  .card-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px; }
+  .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .card-title { color: #8c8c8c; font-size: 13px; }
+  .card-value { font-size: 24px; font-weight: bold; margin-top: 8px; }
+  .data-table { width: 100%; border-collapse: collapse; text-align: left; }
+  .data-table th { background: #f5f7fa; border-bottom: 2px solid #e4e7ed; padding: 12px; font-size: 14px; }
+  .data-table td { padding: 12px; border-bottom: 1px solid #ebedf0; font-size: 14px; }
+  .tag { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+  .modal-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+  .modal-box { background: #fff; border-radius: 8px; width: 420px; padding: 24px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; margin-bottom: 6px; font-size: 14px; }
+  .form-group input { width: 100%; padding: 8px; border: 1px solid #d9d9d9; border-radius: 4px; box-sizing: border-box; }
+  .select-control { padding: 6px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; outline: none; }
+  .btn { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+  .btn-primary { background: #1890ff; color: #fff; }
+  .btn-warning { background: #fa8c16; color: #fff; }
+  .btn-success { background: #52c41a; color: #fff; }
+`
+document.head.appendChild(style)
 
 app.use(ElementPlus)
 app.mount('#app')
