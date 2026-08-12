@@ -7,7 +7,7 @@ const STORAGE_KEY_MERCHANTS = 'bcpay_merchants_v1'
 const app = createApp({
   data() {
     return {
-      activeMenu: 'run_summary', // 預設開啟代收付跑量總表
+      activeMenu: 'run_summary',
       supplierTab: 'collect_status',
       merchantTab: 'query',
 
@@ -19,14 +19,21 @@ const app = createApp({
       searchMerchantName: '',
       searchChannel: '',
 
-      // 新增商戶表單
+      // 新增開戶商戶完整表單 (v1.2.1 含單筆限額)
       newMerchant: {
         name: '',
-        rate: '0.6%',
-        payoutFee: '2.00'
+        collectRate: '0.6%',
+        payoutRate: '0.3% + ￥2.00',
+        channelConfigs: {
+          alipay: { enabled: true, rate: '0.6%', limit: '50,000' },
+          wechat: { enabled: true, rate: '0.6%', limit: '20,000' },
+          linepay: { enabled: true, rate: '2.2%', limit: '30,000' },
+          ecpay: { enabled: false, rate: '2.85%', limit: '100,000' },
+          stripe: { enabled: false, rate: '3.4%', limit: '10,000' }
+        }
       },
 
-      // 通道權重配置數據
+      // 全局通道列表
       paymentGateways: [
         { id: 'alipay', name: '支付寶 (Alipay)', icon: '🟦', fee: '0.6%', status: true, weight: 80, trafficRate: '40%' },
         { id: 'wechat', name: '微信支付 (WeChat Pay)', icon: '🟩', fee: '0.6%', status: true, weight: 80, trafficRate: '40%' },
@@ -56,19 +63,21 @@ const app = createApp({
         { suppOrderNo: 'SUP-PAY-77102', sysOrderNo: 'BC-OUT-2026081202', suppName: '順達代付網關', amount: '￥12,300.00', status: '處理中', matchType: '精準確認說是', date: '2026-08-12' }
       ],
 
+      // 代收訂單（商戶訂單號在系統單號前）
       collectOrders: [
-        { sysOrderNo: 'BC-IN-2026081201', suppOrderNo: 'SUP-COL-88091', merchant: '閃電電商', amount: '￥5,000.00', fee: '￥30.00', status: '已代收成功', date: '2026-08-12' },
-        { sysOrderNo: 'BC-IN-2026081202', suppOrderNo: 'SUP-COL-88095', merchant: '海淘優選', amount: '￥1,200.00', fee: '￥7.20', status: '等待支付', date: '2026-08-12' }
+        { mchOrderNo: 'MCH-ORD-20260812-001', sysOrderNo: 'BC-IN-2026081201', suppOrderNo: 'SUP-COL-88091', merchant: '閃電電商', amount: '￥5,000.00', fee: '￥30.00', status: '已代收成功', date: '2026-08-12' },
+        { mchOrderNo: 'MCH-ORD-20260812-002', sysOrderNo: 'BC-IN-2026081202', suppOrderNo: 'SUP-COL-88095', merchant: '海淘優選', amount: '￥1,200.00', fee: '￥7.20', status: '等待支付', date: '2026-08-12' }
       ],
 
+      // 代付訂單（商戶訂單號在系統單號前）
       payoutOrders: [
-        { sysOrderNo: 'BC-OUT-2026081202', suppOrderNo: 'SUP-PAY-77102', merchant: '閃電電商', amount: '￥12,300.00', fee: '￥15.00', status: '代付處理中', date: '2026-08-12' },
-        { sysOrderNo: 'BC-OUT-2026081109', suppOrderNo: 'SUP-PAY-76011', merchant: '星光娛樂', amount: '￥8,000.00', fee: '￥10.00', status: '代付成功', date: '2026-08-11' }
+        { mchOrderNo: 'MCH-WD-20260812-881', sysOrderNo: 'BC-OUT-2026081202', suppOrderNo: 'SUP-PAY-77102', merchant: '閃電電商', amount: '￥12,300.00', fee: '￥15.00', status: '代付處理中', date: '2026-08-12' },
+        { mchOrderNo: 'MCH-WD-20260811-992', sysOrderNo: 'BC-OUT-2026081109', suppOrderNo: 'SUP-PAY-76011', merchant: '星光娛樂', amount: '￥8,000.00', fee: '￥10.00', status: '代付成功', date: '2026-08-11' }
       ],
 
       merchants: [
-        { id: 'MCH-1001', name: '閃電電商', appKey: 'bc_live_99812a', status: '正常', rate: '0.6%', balance: '￥158,200.00' },
-        { id: 'MCH-1002', name: '海淘優選', appKey: 'bc_live_33419b', status: '正常', rate: '0.8%', balance: '￥42,100.00' }
+        { id: 'MCH-1001', name: '閃電電商', appKey: 'bc_live_99812a', status: '正常', collectRate: '0.6%', payoutRate: '0.3% + ￥2.00', balance: '￥158,200.00' },
+        { id: 'MCH-1002', name: '海淘優選', appKey: 'bc_live_33419b', status: '正常', collectRate: '0.8%', payoutRate: '0.5% + ￥2.00', balance: '￥42,100.00' }
       ],
 
       payoutRequests: [
@@ -106,7 +115,9 @@ const app = createApp({
         name: this.newMerchant.name,
         appKey: newKey,
         status: '正常',
-        rate: this.newMerchant.rate || '0.6%',
+        collectRate: this.newMerchant.collectRate || '0.6%',
+        payoutRate: this.newMerchant.payoutRate || '0.3% + ￥2.00',
+        channelConfigs: JSON.parse(JSON.stringify(this.newMerchant.channelConfigs)),
         balance: '￥0.00'
       }
       this.merchants.push(item)
@@ -134,7 +145,6 @@ const app = createApp({
     }
   },
   render() {
-    // 跑量過濾邏輯
     const filteredRunSummary = this.runSummaryList.filter(item => {
       const matchDate = !this.queryDate || item.date === this.queryDate
       const matchMerchant = !this.searchMerchantName || item.merchant.includes(this.searchMerchantName)
@@ -147,7 +157,6 @@ const app = createApp({
     const totalFee = filteredRunSummary.reduce((sum, i) => sum + i.feeAmt, 0)
     const totalNet = filteredRunSummary.reduce((sum, i) => sum + i.netAmt, 0)
 
-    // 通用搜尋列
     const renderFilterHeader = (isSupplier = false) => h('div', { style: 'background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;' }, [
       h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
         h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '按日查詢:'),
@@ -313,13 +322,14 @@ const app = createApp({
       ])
     ])
 
-    // 4. 📥 代收訂單
+    // 4. 📥 代收訂單 (商戶訂單號在系統單號前)
     const renderCollectOrders = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
       h('h3', { style: 'margin-top: 0;' }, '📥 代收訂單管理'),
       renderFilterHeader(false),
       h('table', { style: 'width: 100%; border-collapse: collapse;' }, [
         h('thead', {}, [
           h('tr', { style: 'background: #fafafa; border-bottom: 1px solid #f0f0f0; text-align: left;' }, [
+            h('th', { style: 'padding: 12px; color: #1890ff;' }, '商戶訂單號'),
             h('th', { style: 'padding: 12px;' }, '系統單號'),
             h('th', { style: 'padding: 12px;' }, '商戶名稱'),
             h('th', { style: 'padding: 12px;' }, '代收金額'),
@@ -328,6 +338,7 @@ const app = createApp({
           ])
         ]),
         h('tbody', {}, this.collectOrders.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
+          h('td', { style: 'padding: 12px; font-weight: bold; color: #262626;' }, item.mchOrderNo),
           h('td', { style: 'padding: 12px;' }, item.sysOrderNo),
           h('td', { style: 'padding: 12px;' }, item.merchant),
           h('td', { style: 'padding: 12px; color: #52c41a; font-weight: bold;' }, item.amount),
@@ -337,13 +348,14 @@ const app = createApp({
       ])
     ])
 
-    // 5. 📤 代付訂單
+    // 5. 📤 代付訂單 (商戶訂單號在系統單號前)
     const renderPayoutOrders = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
       h('h3', { style: 'margin-top: 0;' }, '📤 代付訂單管理'),
       renderFilterHeader(false),
       h('table', { style: 'width: 100%; border-collapse: collapse;' }, [
         h('thead', {}, [
           h('tr', { style: 'background: #fafafa; border-bottom: 1px solid #f0f0f0; text-align: left;' }, [
+            h('th', { style: 'padding: 12px; color: #1890ff;' }, '商戶訂單號'),
             h('th', { style: 'padding: 12px;' }, '系統單號'),
             h('th', { style: 'padding: 12px;' }, '商戶名稱'),
             h('th', { style: 'padding: 12px;' }, '代付金額'),
@@ -352,6 +364,7 @@ const app = createApp({
           ])
         ]),
         h('tbody', {}, this.payoutOrders.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
+          h('td', { style: 'padding: 12px; font-weight: bold; color: #262626;' }, item.mchOrderNo),
           h('td', { style: 'padding: 12px;' }, item.sysOrderNo),
           h('td', { style: 'padding: 12px;' }, item.merchant),
           h('td', { style: 'padding: 12px; color: #fa8c16; font-weight: bold;' }, item.amount),
@@ -361,7 +374,7 @@ const app = createApp({
       ])
     ])
 
-    // 6. 🏢 商戶開戶設置
+    // 6. 🏢 商戶開戶設置 (v1.2.1 升級：商戶名稱、代收費率、代付費率、各別渠道開關、專屬費率、單筆限額調整)
     const renderMerchantSettings = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
       h('div', { style: 'display: flex; gap: 12px; margin-bottom: 20px;' }, [
         h('button', { onClick: () => this.merchantTab = 'query', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: ${this.merchantTab === 'query' ? '#1890ff' : '#f0f0f0'}; color: ${this.merchantTab === 'query' ? '#fff' : '#000'};` }, '商戶列表'),
@@ -373,27 +386,67 @@ const app = createApp({
             h('th', { style: 'padding: 12px;' }, '商戶號'),
             h('th', { style: 'padding: 12px;' }, '商戶名稱'),
             h('th', { style: 'padding: 12px;' }, 'App Key'),
-            h('th', { style: 'padding: 12px;' }, '費率'),
-            h('th', { style: 'padding: 12px;' }, '賬戶餘額')
+            h('th', { style: 'padding: 12px;' }, '代收總費率'),
+            h('th', { style: 'padding: 12px;' }, '代付總費率'),
+            h('th', { style: 'padding: 12px;' }, '帳戶餘額')
           ])
         ]),
         h('tbody', {}, this.merchants.map(item => h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
           h('td', { style: 'padding: 12px;' }, item.id),
           h('td', { style: 'padding: 12px; font-weight: bold;' }, item.name),
           h('td', { style: 'padding: 12px; font-family: monospace;' }, item.appKey),
-          h('td', { style: 'padding: 12px;' }, item.rate),
+          h('td', { style: 'padding: 12px;' }, item.collectRate || item.rate || '0.6%'),
+          h('td', { style: 'padding: 12px;' }, item.payoutRate || '0.3% + ￥2.00'),
           h('td', { style: 'padding: 12px; color: #52c41a; font-weight: bold;' }, item.balance)
         ])))
-      ]) : h('div', { style: 'max-width: 500px;' }, [
-        h('div', { style: 'margin-bottom: 12px;' }, [
-          h('label', { style: 'display: block; margin-bottom: 4px;' }, '商戶名稱:'),
-          h('input', { value: this.newMerchant.name, onInput: e => this.newMerchant.name = e.target.value, placeholder: '請輸入商戶名稱', style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+      ]) : h('div', { style: 'max-width: 720px; background: #fafafa; padding: 20px; border-radius: 8px; border: 1px solid #f0f0f0;' }, [
+        h('h4', { style: 'margin-top: 0; color: #1890ff;' }, '➕ 新增開戶商戶 (v1.2.1)'),
+        h('div', { style: 'margin-bottom: 16px;' }, [
+          h('label', { style: 'display: block; margin-bottom: 6px; font-weight: bold;' }, '商戶名稱:'),
+          h('input', { value: this.newMerchant.name, onInput: e => this.newMerchant.name = e.target.value, placeholder: '請輸入商戶公司或平台名稱', style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
         ]),
-        h('div', { style: 'margin-bottom: 12px;' }, [
-          h('label', { style: 'display: block; margin-bottom: 4px;' }, '代費率 (%):'),
-          h('input', { value: this.newMerchant.rate, onInput: e => this.newMerchant.rate = e.target.value, style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+        h('div', { style: 'display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;' }, [
+          h('div', {}, [
+            h('label', { style: 'display: block; margin-bottom: 6px; font-weight: bold;' }, '預設代收費率 (%):'),
+            h('input', { value: this.newMerchant.collectRate, onInput: e => this.newMerchant.collectRate = e.target.value, placeholder: '例：0.6%', style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+          ]),
+          h('div', {}, [
+            h('label', { style: 'display: block; margin-bottom: 6px; font-weight: bold;' }, '預設代付費率/單筆:'),
+            h('input', { value: this.newMerchant.payoutRate, onInput: e => this.newMerchant.payoutRate = e.target.value, placeholder: '例：0.3% + ￥2.00', style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+          ])
         ]),
-        h('button', { onClick: () => this.submitCreateMerchant(), style: 'background: #52c41a; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;' }, '確認建立商戶')
+        
+        h('div', { style: 'border-top: 1px dashed #ccc; padding-top: 16px; margin-top: 16px;' }, [
+          h('label', { style: 'display: block; margin-bottom: 12px; font-weight: bold; color: #262626;' }, '⚙️ 各別渠道開關、費率與單筆限額調整:'),
+          ...this.paymentGateways.map(gw => {
+            if (!this.newMerchant.channelConfigs[gw.id]) {
+              this.newMerchant.channelConfigs[gw.id] = { enabled: true, rate: gw.fee, limit: '50,000' }
+            }
+            const cfg = this.newMerchant.channelConfigs[gw.id]
+            return h('div', { style: 'display: flex; align-items: center; justify-content: space-between; background: #fff; padding: 10px 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #ebedf0;' }, [
+              h('div', { style: 'display: flex; align-items: center; gap: 8px; min-width: 180px;' }, [
+                h('span', {}, gw.icon),
+                h('span', { style: 'font-weight: 500;' }, gw.name)
+              ]),
+              h('div', { style: 'display: flex; align-items: center; gap: 12px;' }, [
+                h('div', { style: 'display: flex; align-items: center; gap: 4px;' }, [
+                  h('label', { style: 'font-size: 12px; color: #606266;' }, '專屬費率:'),
+                  h('input', { value: cfg.rate, onInput: e => cfg.rate = e.target.value, style: 'width: 70px; padding: 4px 6px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 12px;' })
+                ]),
+                h('div', { style: 'display: flex; align-items: center; gap: 4px;' }, [
+                  h('label', { style: 'font-size: 12px; color: #606266;' }, '單筆限額:'),
+                  h('input', { value: cfg.limit, onInput: e => cfg.limit = e.target.value, placeholder: '限額', style: 'width: 85px; padding: 4px 6px; border: 1px solid #dcdfe6; border-radius: 4px; font-size: 12px;' })
+                ]),
+                h('button', { 
+                  onClick: () => cfg.enabled = !cfg.enabled, 
+                  style: `border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; color: white; background: ${cfg.enabled ? '#52c41a' : '#bfbfbf'};` 
+                }, cfg.enabled ? '已開通' : '未開通')
+              ])
+            ])
+          })
+        ]),
+
+        h('button', { onClick: () => this.submitCreateMerchant(), style: 'background: #1890ff; color: white; border: none; padding: 10px 24px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 16px;' }, '🚀 完成開戶並配置權限')
       ])
     ])
 
@@ -481,7 +534,7 @@ const app = createApp({
         h('div', { style: 'height: 60px; background: #fff; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.05);' }, [
           h('div', { style: 'font-weight: bold; font-size: 16px; color: #1f2937;' }, 'BC pay 運營管理系統'),
           h('div', { style: 'display: flex; align-items: center; gap: 12px;' }, [
-            h('span', { style: 'background: #52c41a; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px;' }, 'BC pay v2.1.0'),
+            h('span', { style: 'background: #52c41a; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px;' }, 'BC pay v1.2.1'),
             h('a', { href: 'https://render.com', target: '_blank', style: 'color: #8c8c8c; font-size: 14px; text-decoration: none;' }, '託管於 Render')
           ])
         ]),
