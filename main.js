@@ -49,7 +49,6 @@ const app = createApp({
             </template>
           </div>
         </div>
-        <!-- 版本號移至右下角小字 -->
         <div class="sidebar-footer">v2.5.0 Build 2026</div>
       </div>
 
@@ -242,11 +241,11 @@ const app = createApp({
         <div v-else-if="activeMenu === 'merchant_list'" class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
             <h3 style="margin: 0;">🏢 商戶列表與餘額管理</h3>
-            <button class="btn btn-primary" @click="showAddMerchantModal = true">➕ 新增商戶</button>
+            <button class="btn btn-primary" @click="openAddMerchantModal">➕ 新增商戶</button>
           </div>
           <table class="data-table">
             <thead>
-              <tr><th>商戶 ID</th><th>商戶名稱</th><th>目前餘額</th><th>代收費率</th><th>代付費率</th><th>限額</th><th>餘額操作</th></tr>
+              <tr><th>商戶 ID</th><th>商戶名稱</th><th>目前餘額</th><th>代收費率</th><th>代付費率</th><th>單筆限額</th><th>已串渠道</th><th>狀態</th><th>操作</th></tr>
             </thead>
             <tbody>
               <tr v-for="m in merchants" :key="m.id">
@@ -257,14 +256,22 @@ const app = createApp({
                 <td>{{ m.payoutFeeRate }}%</td>
                 <td>￥{{ m.minLimit }} - ￥{{ m.maxLimit }}</td>
                 <td>
-                  <button class="btn btn-warning" @click="openBalanceModal(m)">✏️ 商戶餘額調整</button>
+                  <span v-for="c in m.connectedChannels" :key="c" class="tag" style="margin-right: 4px;">{{ c }}</span>
+                </td>
+                <td>
+                  <span class="status-badge" :class="m.active ? 'status-success' : 'status-disabled'">
+                    {{ m.active ? '🟢 啟用' : '🔴 停用' }}
+                  </span>
+                </td>
+                <td>
+                  <button class="btn btn-warning" @click="openBalanceModal(m)">✏️ 餘額調整</button>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- 6. 總跑量結算 (包含結算明細與各項跑量) -->
+        <!-- 6. 總跑量結算 -->
         <div v-else-if="isSettlementMenu" class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
             <h3 style="margin:0;">📊 總跑量結算 - {{ currentSettlementTitle }}</h3>
@@ -316,7 +323,69 @@ const app = createApp({
       </div>
     </div>
 
-    <!-- 彈窗：商戶餘額調整 -->
+    <!-- 彈窗 1：新增商戶 -->
+    <div v-if="showAddMerchantModal" class="modal-backdrop">
+      <div class="modal-box" style="width: 480px;">
+        <h3 style="margin-top:0; color: #1890ff;">➕ 新增商戶</h3>
+        
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>商戶號 (可自訂)：</label>
+            <input type="text" v-model="newMerchant.id" class="input-control" placeholder="例: MCH-1003">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>商戶名稱：</label>
+            <input type="text" v-model="newMerchant.name" class="input-control" placeholder="輸入商戶名稱">
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>代收費率 (%)：</label>
+            <input type="number" v-model.number="newMerchant.collectFeeRate" step="0.01" class="input-control" placeholder="0.8">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>代付費率 (%)：</label>
+            <input type="number" v-model.number="newMerchant.payoutFeeRate" step="0.01" class="input-control" placeholder="0.5">
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>單筆最小限額：</label>
+            <input type="number" v-model.number="newMerchant.minLimit" class="input-control" placeholder="100">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>單筆最大限額：</label>
+            <input type="number" v-model.number="newMerchant.maxLimit" class="input-control" placeholder="50000">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>渠道產品串接選項：</label>
+          <div style="display:flex; gap:12px; margin-top: 6px;">
+            <label v-for="ch in availableChannels" :key="ch" style="font-size:13px; cursor:pointer;">
+              <input type="checkbox" :value="ch" v-model="newMerchant.connectedChannels"> {{ ch }}
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>商戶啟用狀態：</label>
+          <select v-model="newMerchant.active" class="input-control">
+            <option :value="true">🟢 啟用 (正常營運)</option>
+            <option :value="false">🔴 停用 (暫停交易)</option>
+          </select>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+          <button class="btn" @click="showAddMerchantModal = false">取消</button>
+          <button class="btn btn-primary" @click="confirmAddMerchant">確認新增</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 彈窗 2：商戶餘額調整 -->
     <div v-if="showBalanceModal" class="modal-backdrop">
       <div class="modal-box">
         <h3 style="margin-top:0; color: #1890ff;">✏️ 商戶餘額調整</h3>
@@ -338,15 +407,24 @@ const app = createApp({
   `,
   data() {
     return {
-      activeMenu: 'channel_weight',
+      activeMenu: 'merchant_list',
       openSubMenus: ['channel_group', 'supplier_group', 'collect_group', 'payout_group', 'settlement_group'],
       filterDate: '',
 
-      // 搜尋欄位 state
-      searchQuery: {
-        mchNo: '',
-        sysNo: '',
-        supNo: ''
+      searchQuery: { mchNo: '', sysNo: '', supNo: '' },
+
+      showAddMerchantModal: false,
+      availableChannels: ['微信支付直連', '支付寶原生', '銀聯快速代付'],
+      newMerchant: {
+        id: '',
+        name: '',
+        rawBalance: 0,
+        collectFeeRate: 0.8,
+        payoutFeeRate: 0.5,
+        minLimit: 100,
+        maxLimit: 50000,
+        connectedChannels: ['微信支付直連', '支付寶原生'],
+        active: true
       },
 
       showBalanceModal: false,
@@ -412,11 +490,10 @@ const app = createApp({
       ],
 
       merchants: [
-        { id: 'MCH-1001', name: '閃電電商', rawBalance: 158200.00, collectFeeRate: 0.8, payoutFeeRate: 0.5, minLimit: 100, maxLimit: 50000 },
-        { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00, collectFeeRate: 0.75, payoutFeeRate: 0.45, minLimit: 100, maxLimit: 50000 }
+        { id: 'MCH-1001', name: '閃電電商', rawBalance: 158200.00, collectFeeRate: 0.8, payoutFeeRate: 0.5, minLimit: 100, maxLimit: 50000, connectedChannels: ['微信支付直連', '支付寶原生'], active: true },
+        { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00, collectFeeRate: 0.75, payoutFeeRate: 0.45, minLimit: 100, maxLimit: 50000, connectedChannels: ['銀聯快速代付'], active: true }
       ],
 
-      // 三個單號示範資料：mchNo (商戶單號), sysNo (系統單號), supNo (供應商單號)
       supCollectList: [
         { mchNo: 'MCH202608120001', sysNo: 'SYS-C-88101', supNo: 'SUP-WX-9981', date: '2026-08-12', supplier: '匯通通道', amount: 85000, status: '成功' }
       ],
@@ -444,9 +521,7 @@ const app = createApp({
     }
   },
   computed: {
-    isSettlementMenu() {
-      return this.activeMenu.startsWith('settlement_');
-    },
+    isSettlementMenu() { return this.activeMenu.startsWith('settlement_'); },
     currentSettlementTitle() {
       const titles = {
         settlement_channel_total: '渠道總跑量',
@@ -471,6 +546,40 @@ const app = createApp({
     isChildActive(parentItem) {
       if (!parentItem.children) return false;
       return parentItem.children.some(child => child.key === this.activeMenu);
+    },
+    openAddMerchantModal() {
+      const defaultId = `MCH-${1000 + this.merchants.length + 1}`;
+      this.newMerchant = {
+        id: defaultId,
+        name: '',
+        rawBalance: 0,
+        collectFeeRate: 0.8,
+        payoutFeeRate: 0.5,
+        minLimit: 100,
+        maxLimit: 50000,
+        connectedChannels: ['微信支付直連', '支付寶原生'],
+        active: true
+      };
+      this.showAddMerchantModal = true;
+    },
+    confirmAddMerchant() {
+      if (!this.newMerchant.id) return alert('請輸入商戶號！');
+      if (!this.newMerchant.name) return alert('請輸入商戶名稱！');
+
+      this.merchants.push({
+        id: this.newMerchant.id,
+        name: this.newMerchant.name,
+        rawBalance: 0,
+        collectFeeRate: Number(this.newMerchant.collectFeeRate) || 0,
+        payoutFeeRate: Number(this.newMerchant.payoutFeeRate) || 0,
+        minLimit: Number(this.newMerchant.minLimit) || 100,
+        maxLimit: Number(this.newMerchant.maxLimit) || 50000,
+        connectedChannels: [...this.newMerchant.connectedChannels],
+        active: this.newMerchant.active
+      });
+
+      alert(`商戶 [${this.newMerchant.name}] (${this.newMerchant.id}) 新增成功！`);
+      this.showAddMerchantModal = false;
     },
     handleExactSearch(type) {
       alert(`[${type}] 精準檢索條件：\n商戶單號：${this.searchQuery.mchNo || '無'}\n系統單號：${this.searchQuery.sysNo || '無'}\n供應商單號：${this.searchQuery.supNo || '無'}`);
@@ -503,7 +612,6 @@ style.innerHTML = `
   * { box-sizing: border-box; }
   .layout-container { display: flex; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f7f9; }
   
-  /* 淺藍色系 SideBar */
   .sidebar { width: 240px; background: #e8f3ff; color: #2c3e50; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between; border-right: 1px solid #d0e3f7; }
   .sidebar-logo { padding: 20px 16px; font-size: 18px; font-weight: bold; color: #1890ff; border-bottom: 1px solid #d0e3f7; background: #dbeeff; }
   .sidebar-menu { padding: 12px 0; }
@@ -527,7 +635,6 @@ style.innerHTML = `
   .card-title { color: #8c8c8c; font-size: 13px; }
   .card-value { font-size: 24px; font-weight: bold; margin-top: 6px; }
   
-  /* 精準搜尋三欄排列樣式 */
   .search-box-group { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
   .search-box-group .input-control { width: 220px; }
 
@@ -541,10 +648,10 @@ style.innerHTML = `
   .status-disabled { background: #fff1f0; color: #f5222d; border: 1px solid #ffa39e; }
 
   .modal-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-  .modal-box { background: #fff; border-radius: 8px; width: 420px; padding: 24px; }
+  .modal-box { background: #fff; border-radius: 8px; width: 440px; padding: 24px; }
   .form-group { margin-bottom: 14px; }
   .form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: #4a5568; }
-  .input-control { padding: 7px 10px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 14px; outline: none; }
+  .input-control { padding: 7px 10px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 14px; outline: none; width: 100%; }
   
   .btn { padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
   .btn-primary { background: #1890ff; color: #fff; }
