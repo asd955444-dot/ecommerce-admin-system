@@ -19,13 +19,13 @@ const app = createApp({
       searchMerchantName: '', // 商戶篩選下拉選單綁定值
       searchChannel: '',
 
-      // 編輯餘額彈窗控制 (v1.2.2)
+      // 編輯餘額彈窗控制
       showBalanceModal: false,
       selectedMerchantForBalance: null,
       balanceAdjustAmount: 0,
       balanceAdjustReason: '',
 
-      // 新增商戶表單 (v1.2.2 含自訂商戶號)
+      // 新增商戶表單
       newMerchant: {
         customId: '',
         name: '',
@@ -176,7 +176,7 @@ const app = createApp({
       link.click()
       document.body.removeChild(link)
     },
-    // 獨立匯出代收結算報表
+    // v2.2.4 獨立匯出代收結算報表
     exportCollectReport(filteredData) {
       const mName = this.searchMerchantName ? this.searchMerchantName : '全部商戶'
       const rows = [
@@ -185,7 +185,7 @@ const app = createApp({
       ]
       this.exportReportCSV(`代收結算報表_${mName}`, rows)
     },
-    // 獨立匯出代付結算報表
+    // v2.2.4 獨立匯出代付結算報表
     exportPayoutReport(filteredData) {
       const mName = this.searchMerchantName ? this.searchMerchantName : '全部商戶'
       const rows = [
@@ -196,7 +196,7 @@ const app = createApp({
     }
   },
   render() {
-    // 跑量過濾條件邏輯 (支援選擇框精準/模糊匹配)
+    // 跑量過濾條件邏輯 (支援商戶選擇框精準過濾)
     const filteredRunSummary = this.runSummaryList.filter(item => {
       const matchDate = !this.queryDate || item.date === this.queryDate
       const matchMerchant = !this.searchMerchantName || item.merchant === this.searchMerchantName
@@ -229,7 +229,7 @@ const app = createApp({
       h('button', { onClick: () => this.$forceUpdate(), style: 'background: #1890ff; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer;' }, '🔍 檢索')
     ])
 
-    // 1. 📊 代收付跑量總表 (含有商戶選擇框與獨立結算導出功能)
+    // 1. 📊 代收付跑量總表 (v2.2.4 升級版：含商戶選擇框與獨立分開導出功能)
     const renderRunSummaryModule = () => h('div', [
       h('div', { style: 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px;' }, [
         h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
@@ -268,7 +268,7 @@ const app = createApp({
             h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '日期:'),
             h('input', { type: 'date', value: this.queryDate, onInput: e => this.queryDate = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
           ]),
-          // ⭐ 商戶選擇框
+          // ⭐ v2.2.4 新增：商戶專屬下拉選擇框
           h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
             h('label', { style: 'font-size: 13px; font-weight: bold; color: #1890ff;' }, '選擇商戶:'),
             h('select', { 
