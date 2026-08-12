@@ -1,12 +1,10 @@
 import { createApp } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 
-// 1. 定义后台首页组件
-const Home = {
+const App = {
   template: `
-    <div style="padding: 20px;">
+    <div style="padding: 20px; font-family: sans-serif; background-color: #f5f7fa; min-height: 100vh;">
       <el-card shadow="always">
         <template #header>
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -20,17 +18,17 @@ const Home = {
             <el-statistic title="今日总销售额" :value="128450">
               <template #suffix>元</template>
             </el-statistic>
-          </Col>
+          </el-col>
           <el-col :span="8">
             <el-statistic title="今日订单量" :value="1240">
               <template #suffix>单</template>
             </el-statistic>
-          </col>
+          </el-col>
           <el-col :span="8">
             <el-statistic title="新增用户" :value="358">
               <template #suffix>人</template>
             </el-statistic>
-          </col>
+          </el-col>
         </el-row>
 
         <el-alert
@@ -65,27 +63,6 @@ const Home = {
   }
 }
 
-// 2. 定义根组件
-const App = {
-  template: `
-    <div style="font-family: sans-serif; background-color: #f5f7fa; min-height: 100vh;">
-      <router-view></router-view>
-    </div>
-  `
-}
-
-// 3. 配置路由
-const routes = [
-  { path: '/', component: Home } // 将首页路由映射到 Home 组件
-]
-
-const router = createRouter({
-  history: createWebHistory(),
-  routes,
-})
-
-// 4. 创建并挂载应用
 const app = createApp(App)
-app.use(router) // 使用路由
 app.use(ElementPlus)
 app.mount('#app')
