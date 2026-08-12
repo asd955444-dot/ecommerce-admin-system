@@ -7,62 +7,73 @@ const STORAGE_KEY_MERCHANTS = 'bcpay_merchants_v1'
 const app = createApp({
   data() {
     return {
-      activeMenu: 'payment_overview',
+      activeMenu: 'run_summary', // 預設直接開在跑量總表
       supplierTab: 'collect_status',
       merchantTab: 'query',
 
-      // 查询条件状态
+      // 查詢條件狀態
       queryDate: '2026-08-12',
       queryMonth: '2026-08',
       supplierOrderNo: '',
       systemOrderNo: '',
+      searchMerchantName: '',
+      searchChannel: '',
 
-      // 新增商户表单
+      // 新增商戶表單
       newMerchant: {
         name: '',
         rate: '0.6%',
         payoutFee: '2.00'
       },
 
-      // 通道权重配置数据
+      // 通道權重配置數據
       paymentGateways: [
-        { id: 'alipay', name: '支付宝 (Alipay)', icon: '🟦', fee: '0.6%', status: true, weight: 80, trafficRate: '40%' },
+        { id: 'alipay', name: '支付寶 (Alipay)', icon: '🟦', fee: '0.6%', status: true, weight: 80, trafficRate: '40%' },
         { id: 'wechat', name: '微信支付 (WeChat Pay)', icon: '🟩', fee: '0.6%', status: true, weight: 80, trafficRate: '40%' },
         { id: 'linepay', name: 'LINE Pay', icon: '🟢', fee: '2.2%', status: true, weight: 30, trafficRate: '15%' },
-        { id: 'ecpay', name: '绿界 ECPay (信用卡/超商)', icon: '🟧', fee: '2.85%', status: true, weight: 10, trafficRate: '5%' },
-        { id: 'stripe', name: 'Stripe (国际信用卡)', icon: '💜', fee: '3.4% + $0.30', status: false, weight: 0, trafficRate: '0%' }
+        { id: 'ecpay', name: '綠界 ECPay (信用卡/超商)', icon: '🟧', fee: '2.85%', status: true, weight: 10, trafficRate: '5%' },
+        { id: 'stripe', name: 'Stripe (國際信用卡)', icon: '💜', fee: '3.4% + $0.30', status: false, weight: 0, trafficRate: '0%' }
       ],
 
-      // 基础数据
+      // 代收付跑量總表數據 (新增)
+      runSummaryList: [
+        { date: '2026-08-12', merchant: '閃電電商', channel: '微信支付', collectAmt: 158200, payoutAmt: 50000, feeAmt: 1249.20, netAmt: 106950.80, count: 420 },
+        { date: '2026-08-12', merchant: '海淘優選', channel: '支付寶', collectAmt: 89300, payoutAmt: 20000, feeAmt: 695.80, netAmt: 68604.20, count: 215 },
+        { date: '2026-08-12', merchant: '星光娛樂', channel: 'LINE Pay', collectAmt: 42500, payoutAmt: 8000, feeAmt: 1095.00, netAmt: 33405.00, count: 98 },
+        { date: '2026-08-11', merchant: '閃電電商', channel: '微信支付', collectAmt: 182000, payoutAmt: 65000, feeAmt: 1442.00, netAmt: 115558.00, count: 510 },
+        { date: '2026-08-11', merchant: '海淘優選', channel: '綠界 ECPay', collectAmt: 31000, payoutAmt: 12000, feeAmt: 907.50, netAmt: 18092.50, count: 76 }
+      ],
+
+      // 基礎數據
       transactions: [
         { id: 'TX-20260812-9901', channel: '微信支付', channelIcon: '🟩', orderId: 'BC-IN-2026081201', amount: '￥299.00', status: '交易成功', date: '2026-08-12' },
-        { id: 'TX-20260812-9902', channel: '支付宝', channelIcon: '🟦', orderId: 'BC-IN-2026081202', amount: '￥1,280.00', status: '交易成功', date: '2026-08-12' },
+        { id: 'TX-20260812-9902', channel: '支付寶', channelIcon: '🟦', orderId: 'BC-IN-2026081202', amount: '￥1,280.00', status: '交易成功', date: '2026-08-12' },
         { id: 'TX-20260812-9903', channel: 'LINE Pay', channelIcon: '🟢', orderId: 'BC-OUT-2026081202', amount: 'NT$ 2,500', status: '交易成功', date: '2026-08-12' }
       ],
 
       supplierOrders: [
-        { suppOrderNo: 'SUP-COL-88091', sysOrderNo: 'BC-IN-2026081201', suppName: '极速支付通道A', amount: '￥5,000.00', status: '成功', matchType: '精准成功', date: '2026-08-12' },
-        { suppOrderNo: 'SUP-PAY-77102', sysOrderNo: 'BC-OUT-2026081202', suppName: '顺达代付网关', amount: '￥12,300.00', status: '处理中', matchType: '精准确认为是', date: '2026-08-12' }
+        { suppOrderNo: 'SUP-COL-88091', sysOrderNo: 'BC-IN-2026081201', suppName: '極速支付通道A', amount: '￥5,000.00', status: '成功', matchType: '精準成功', date: '2026-08-12' },
+        { suppOrderNo: 'SUP-PAY-77102', sysOrderNo: 'BC-OUT-2026081202', suppName: '順達代付網關', amount: '￥12,300.00', status: '處理中', matchType: '精準確認說是', date: '2026-08-12' }
       ],
 
       collectOrders: [
-        { sysOrderNo: 'BC-IN-2026081201', suppOrderNo: 'SUP-COL-88091', merchant: '闪电电商', amount: '￥5,000.00', fee: '￥30.00', status: '已代收成功', date: '2026-08-12' },
-        { sysOrderNo: 'BC-IN-2026081202', suppOrderNo: 'SUP-COL-88095', merchant: '海淘优选', amount: '￥1,200.00', fee: '￥7.20', status: '等待支付', date: '2026-08-12' }
+        { sysOrderNo: 'BC-IN-2026081201', suppOrderNo: 'SUP-COL-88091', merchant: '閃電電商', amount: '￥5,000.00', fee: '￥30.00', status: '已代收成功', date: '2026-08-12' },
+        { sysOrderNo: 'BC-IN-2026081202', suppOrderNo: 'SUP-COL-88095', merchant: '海淘優選', amount: '￥1,200.00', fee: '￥7.20', status: '等待支付', date: '2026-08-12' }
       ],
 
       payoutOrders: [
-        { sysOrderNo: 'BC-OUT-2026081202', suppOrderNo: 'SUP-PAY-77102', merchant: '闪电电商', amount: '￥12,300.00', fee: '￥15.00', status: '代付处理中', date: '2026-08-12' },
-        { sysOrderNo: 'BC-OUT-2026081109', suppOrderNo: 'SUP-PAY-76011', merchant: '星光娱乐', amount: '￥8,000.00', fee: '￥10.00', status: '代付成功', date: '2026-08-11' }
+        { sysOrderNo: 'BC-OUT-2026081202', suppOrderNo: 'SUP-PAY-77102', merchant: '閃電電商', amount: '￥12,300.00', fee: '￥15.00', status: '代付處理中', date: '2026-08-12' },
+        { sysOrderNo: 'BC-OUT-2026081109', suppOrderNo: 'SUP-PAY-76011', merchant: '星光娛樂', amount: '￥8,000.00', fee: '￥10.00', status: '代付成功', date: '2026-08-11' }
       ],
 
       merchants: [
-        { id: 'MCH-1001', name: '闪电电商', appKey: 'bc_live_99812a', status: '正常', rate: '0.6%', balance: '￥158,200.00' },
-        { id: 'MCH-1002', name: '海淘优选', appKey: 'bc_live_33419b', status: '正常', rate: '0.8%', balance: '￥42,100.00' }
+        { id: 'MCH-1001', name: '閃電電商', appKey: 'bc_live_99812a', status: '正常', rate: '0.6%', balance: '￥158,200.00' },
+        { id: 'MCH-1002', name: '海淘優選', appKey: 'bc_live_33419b', status: '正常', rate: '0.8%', balance: '￥42,100.00' }
       ],
 
       payoutRequests: [
-        { id: 'WD-2026081201', merchant: '闪电电商', amount: '￥50,000.00', bank: '招商银行 (尾号 8812)', status: '待审核', time: '2026-08-12 16:00' },
-        { id: 'WD-2026081105', merchant: '海淘优选', amount: '￥20,000.00', bank: '建设银行 (尾号 4102)', status: '已下发', time: '2026-08-11 14:30' }
+        { id: 'WD-2026081201', merchant: '閃電電商', amount: '￥50,000.00', bank: '招商銀行 (尾號 8812)', status: '待審核', time: '2026-08-12 16:00' },
+        { id: 'WD-2026081105', merchant: '海淘優選', amount: '￥20,000.00', bank: '建設銀行 (尾號 4102)', status: '已下發', time: '2026-08-11 14:30' }
       ]
     }
   },
@@ -85,7 +96,7 @@ const app = createApp({
     },
     submitCreateMerchant() {
       if (!this.newMerchant.name) {
-        alert('请输入商户名称')
+        alert('請輸入商戶名稱')
         return
       }
       const newId = `MCH-${1000 + this.merchants.length + 1}`
@@ -100,13 +111,13 @@ const app = createApp({
       }
       this.merchants.push(item)
       localStorage.setItem(STORAGE_KEY_MERCHANTS, JSON.stringify(this.merchants))
-      alert(`商户 [${this.newMerchant.name}] 开户成功！分配商户号: ${newId}`)
+      alert(`商戶 [${this.newMerchant.name}] 開戶成功！分配商戶號: ${newId}`)
       this.newMerchant.name = ''
       this.merchantTab = 'query'
     },
     approvePayout(item) {
-      item.status = '已下发'
-      alert(`已成功同意下发单号: ${item.id}，资金已结算！`)
+      item.status = '已下發'
+      alert(`已成功同意下發單號: ${item.id}，資金已結算！`)
     },
     exportReportCSV(filename, rows) {
       let csvContent = "data:text/csv;charset=utf-8,\uFEFF"
@@ -123,350 +134,199 @@ const app = createApp({
     }
   },
   render() {
-    const filteredSupplierOrders = this.supplierOrders.filter(o => {
-      const matchSupp = !this.supplierOrderNo || o.suppOrderNo.includes(this.supplierOrderNo)
-      const matchSys = !this.systemOrderNo || o.sysOrderNo.includes(this.systemOrderNo)
-      const matchDate = !this.queryDate || o.date === this.queryDate
-      return matchSupp && matchSys && matchDate
+    // 跑量總表過濾邏輯
+    const filteredRunSummary = this.runSummaryList.filter(item => {
+      const matchDate = !this.queryDate || item.date === this.queryDate
+      const matchMerchant = !this.searchMerchantName || item.merchant.includes(this.searchMerchantName)
+      const matchChannel = !this.searchChannel || item.channel.includes(this.searchChannel)
+      return matchDate && matchMerchant && matchChannel
     })
 
-    const filteredCollectOrders = this.collectOrders.filter(o => {
-      const matchSys = !this.systemOrderNo || o.sysOrderNo.includes(this.systemOrderNo)
-      const matchDate = !this.queryDate || o.date === this.queryDate
-      return matchSys && matchDate
-    })
-
-    const filteredPayoutOrders = this.payoutOrders.filter(o => {
-      const matchSys = !this.systemOrderNo || o.sysOrderNo.includes(this.systemOrderNo)
-      const matchDate = !this.queryDate || o.date === this.queryDate
-      return matchSys && matchDate
-    })
+    // 彙整計算
+    const totalCollect = filteredRunSummary.reduce((sum, i) => sum + i.collectAmt, 0)
+    const totalPayout = filteredRunSummary.reduce((sum, i) => sum + i.payoutAmt, 0)
+    const totalFee = filteredRunSummary.reduce((sum, i) => sum + i.feeAmt, 0)
+    const totalNet = filteredRunSummary.reduce((sum, i) => sum + i.netAmt, 0)
 
     const renderFilterHeader = (isSupplier = false) => h('div', { style: 'background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;' }, [
       h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '按日查询:'),
+        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '按日查詢:'),
         h('input', { type: 'date', value: this.queryDate, onInput: e => this.queryDate = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
       ]),
       h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '按月查询:'),
+        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '按月查詢:'),
         h('input', { type: 'month', value: this.queryMonth, onInput: e => this.queryMonth = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
       ]),
       isSupplier ? h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '供应商单号:'),
-        h('input', { placeholder: '输入供应商单号...', value: this.supplierOrderNo, onInput: e => this.supplierOrderNo = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '供應商單號:'),
+        h('input', { placeholder: '輸入供應商單號...', value: this.supplierOrderNo, onInput: e => this.supplierOrderNo = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
       ]) : null,
       h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
-        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, 'BC pay单号:'),
-        h('input', { placeholder: '输入BC pay单号...', value: this.systemOrderNo, onInput: e => this.systemOrderNo = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+        h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, 'BC pay單號:'),
+        h('input', { placeholder: '輸入BC pay單號...', value: this.systemOrderNo, onInput: e => this.systemOrderNo = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
       ]),
-      h('button', { onClick: () => this.$forceUpdate(), style: 'background: #1890ff; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer;' }, '🔍 立即检索')
+      h('button', { onClick: () => this.$forceUpdate(), style: 'background: #1890ff; color: white; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer;' }, '🔍 立即檢索')
+    ])
+
+    // 📊 代收付跑量總表 View
+    const renderRunSummaryModule = () => h('div', [
+      h('div', { style: 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px;' }, [
+        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
+          h('div', { style: 'color: #8c8c8c; font-size: 13px;' }, '當前統計總代收額'),
+          h('div', { style: 'font-size: 24px; font-weight: bold; color: #52c41a; margin-top: 8px;' }, `￥${totalCollect.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
+        ]),
+        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
+          h('div', { style: 'color: #8c8c8c; font-size: 13px;' }, '當前統計總代付額'),
+          h('div', { style: 'font-size: 24px; font-weight: bold; color: #fa8c16; margin-top: 8px;' }, `￥${totalPayout.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
+        ]),
+        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
+          h('div', { style: 'color: #8c8c8c; font-size: 13px;' }, '淨跑量 (代收 - 代付)'),
+          h('div', { style: 'font-size: 24px; font-weight: bold; color: #1890ff; margin-top: 8px;' }, `￥${totalNet.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
+        ]),
+        h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);' }, [
+          h('div', { style: 'color: #8c8c8c; font-size: 13px;' }, '平台手續費收益'),
+          h('div', { style: 'font-size: 24px; font-weight: bold; color: #f5222d; margin-top: 8px;' }, `￥${totalFee.toLocaleString('zh-CN', {minimumFractionDigits: 2})}`)
+        ])
+      ]),
+      h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
+        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;' }, [
+          h('h3', { style: 'margin: 0;' }, '📊 代收付跑量總表'),
+          h('button', { 
+            onClick: () => this.exportReportCSV("BCPay_Run_Summary", [
+              ["日期", "商戶名稱", "通道", "代收金額", "代付金額", "手續費", "淨結算金額", "交易筆數"],
+              ...filteredRunSummary.map(i => [i.date, i.merchant, i.channel, i.collectAmt, i.payoutAmt, i.feeAmt, i.netAmt, i.count])
+            ]),
+            style: 'background: #52c41a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;' 
+          }, '📥 匯出跑量報表 CSV')
+        ]),
+        h('div', { style: 'background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; align-items: center;' }, [
+          h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
+            h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '日期:'),
+            h('input', { type: 'date', value: this.queryDate, onInput: e => this.queryDate = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+          ]),
+          h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
+            h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '商戶名稱:'),
+            h('input', { placeholder: '搜尋商戶...', value: this.searchMerchantName, onInput: e => this.searchMerchantName = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+          ]),
+          h('div', { style: 'display: flex; align-items: center; gap: 8px;' }, [
+            h('label', { style: 'font-size: 13px; font-weight: bold; color: #606266;' }, '通道名稱:'),
+            h('input', { placeholder: '搜尋通道...', value: this.searchChannel, onInput: e => this.searchChannel = e.target.value, style: 'padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 4px;' })
+          ])
+        ]),
+        h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
+          h('thead', {}, [
+            h('tr', { style: 'background: #f5f7fa; border-bottom: 2px solid #e4e7ed;' }, [
+              h('th', { style: 'padding: 12px;' }, '日期'),
+              h('th', { style: 'padding: 12px;' }, '商戶名稱'),
+              h('th', { style: 'padding: 12px;' }, '支付通道'),
+              h('th', { style: 'padding: 12px;' }, '代收金額'),
+              h('th', { style: 'padding: 12px;' }, '代付金額'),
+              h('th', { style: 'padding: 12px;' }, '手續費'),
+              h('th', { style: 'padding: 12px;' }, '淨結算金額'),
+              h('th', { style: 'padding: 12px;' }, '總筆數')
+            ])
+          ]),
+          h('tbody', {}, filteredRunSummary.length ? filteredRunSummary.map(item => 
+            h('tr', { style: 'border-bottom: 1px solid #ebedf0;' }, [
+              h('td', { style: 'padding: 12px; color: #606266;' }, item.date),
+              h('td', { style: 'padding: 12px; font-weight: bold;' }, item.merchant),
+              h('td', { style: 'padding: 12px;' }, item.channel),
+              h('td', { style: 'padding: 12px; color: #52c41a; font-weight: bold;' }, `￥${item.collectAmt.toLocaleString()}`),
+              h('td', { style: 'padding: 12px; color: #fa8c16; font-weight: bold;' }, `￥${item.payoutAmt.toLocaleString()}`),
+              h('td', { style: 'padding: 12px; color: #f5222d;' }, `￥${item.feeAmt.toLocaleString()}`),
+              h('td', { style: 'padding: 12px; color: #1890ff; font-weight: bold;' }, `￥${item.netAmt.toLocaleString()}`),
+              h('td', { style: 'padding: 12px;' }, h('span', { style: 'background: #e6f7ff; color: #1890ff; padding: 2px 8px; border-radius: 10px; font-size: 12px;' }, `${item.count} 筆`))
+            ])
+          ) : [h('tr', {}, [h('td', { colspan: 8, style: 'text-align: center; padding: 24px; color: #909399;' }, '查無對應跑量紀錄')])])
+        ])
+      ])
     ])
 
     const renderPaymentOverview = () => h('div', [
       h('div', { style: 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px;' }, [
         h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '今日代收总额'),
+          h('div', { style: 'color: #909399; font-size: 14px;' }, '今日代收總額'),
           h('div', { style: 'font-size: 26px; font-weight: bold; margin: 8px 0;' }, '￥328,520.00'),
           h('div', { style: 'color: #67c23a; font-size: 12px;' }, '成功率 99.1%')
         ]),
         h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '今日代付总额'),
+          h('div', { style: 'color: #909399; font-size: 14px;' }, '今日代付總額'),
           h('div', { style: 'font-size: 26px; font-weight: bold; color: #e6a23c; margin: 8px 0;' }, '￥142,100.00'),
           h('div', { style: 'color: #409eff; font-size: 12px;' }, '完成率 98.5%')
         ]),
         h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '平台开户商户'),
+          h('div', { style: 'color: #909399; font-size: 14px;' }, '平台開戶商戶'),
           h('div', { style: 'font-size: 26px; font-weight: bold; color: #409eff; margin: 8px 0;' }, `${this.merchants.length} 家`),
           h('div', { style: 'color: #67c23a; font-size: 12px;' }, '已全部激活')
         ]),
         h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '待处理下发'),
-          h('div', { style: 'font-size: 26px; font-weight: bold; color: #f56c6c; margin: 8px 0;' }, `${this.payoutRequests.filter(p => p.status === '待审核').length} 笔`),
-          h('div', { style: 'color: #909399; font-size: 12px;' }, '需要财务审核')
-        ])
-      ]),
-      h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-        h('h3', { style: 'margin-top: 0;' }, 'BC pay 聚合交易流水'),
-        h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
-          h('thead', {}, [
-            h('tr', { style: 'background: #f5f7fa; border-bottom: 2px solid #e4e7ed;' }, [
-              h('th', { style: 'padding: 12px;' }, '交易流水号'),
-              h('th', { style: 'padding: 12px;' }, '渠道'),
-              h('th', { style: 'padding: 12px;' }, '关联单号'),
-              h('th', { style: 'padding: 12px;' }, '金额'),
-              h('th', { style: 'padding: 12px;' }, '状态')
-            ])
-          ]),
-          h('tbody', {}, this.transactions.map(t => h('tr', { style: 'border-bottom: 1px solid #ebedf0;' }, [
-            h('td', { style: 'padding: 12px; font-family: monospace;' }, t.id),
-            h('td', { style: 'padding: 12px;' }, `${t.channelIcon} ${t.channel}`),
-            h('td', { style: 'padding: 12px; color: #409eff;' }, t.orderId),
-            h('td', { style: 'padding: 12px; font-weight: bold;' }, t.amount),
-            h('td', { style: 'padding: 12px;' }, h('span', { style: 'background: #f0f9eb; color: #67c23a; padding: 4px 8px; border-radius: 4px; font-size: 12px;' }, t.status))
-          ])))
+          h('div', { style: 'color: #909399; font-size: 14px;' }, '待處理下發'),
+          h('div', { style: 'font-size: 26px; font-weight: bold; color: #f56c6c; margin: 8px 0;' }, `${this.payoutRequests.filter(p => p.status === '待審核').length} 筆`),
+          h('div', { style: 'color: #909399; font-size: 12px;' }, '需要財務審核')
         ])
       ])
     ])
 
     const renderSupplierModule = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '🏭 供应商订单管理中心'),
-      h('div', { style: 'display: flex; gap: 10px; margin-bottom: 16px; border-bottom: 1px solid #e4e7ed; padding-bottom: 10px;' }, [
-        h('button', { onClick: () => this.supplierTab = 'collect_status', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; ${this.supplierTab === 'collect_status' ? 'background: #1890ff; color: white;' : 'background: #f4f4f5; color: #606266;'}` }, '供应商代收订单状态'),
-        h('button', { onClick: () => this.supplierTab = 'payout_status', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; ${this.supplierTab === 'payout_status' ? 'background: #1890ff; color: white;' : 'background: #f4f4f5; color: #606266;'}` }, '供应商代付订单状态'),
-        h('button', { onClick: () => this.supplierTab = 'collect_exact', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; ${this.supplierTab === 'collect_exact' ? 'background: #52c41a; color: white;' : 'background: #f4f4f5; color: #606266;'}` }, '供应商代收订单状态(精准)'),
-        h('button', { onClick: () => this.supplierTab = 'payout_exact', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; ${this.supplierTab === 'payout_exact' ? 'background: #52c41a; color: white;' : 'background: #f4f4f5; color: #606266;'}` }, '供应商代付订单状态(精准)')
-      ]),
-      renderFilterHeader(true),
-      h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #f5f7fa; border-bottom: 2px solid #e4e7ed;' }, [
-            h('th', { style: 'padding: 12px;' }, '供应商'),
-            h('th', { style: 'padding: 12px;' }, '供应商订单号'),
-            h('th', { style: 'padding: 12px;' }, 'BC pay订单号'),
-            h('th', { style: 'padding: 12px;' }, '金额'),
-            h('th', { style: 'padding: 12px;' }, '状态'),
-            h('th', { style: 'padding: 12px;' }, '匹配模式'),
-            h('th', { style: 'padding: 12px;' }, '日期')
-          ])
-        ]),
-        h('tbody', {}, filteredSupplierOrders.length ? filteredSupplierOrders.map(item => 
-          h('tr', { style: 'border-bottom: 1px solid #ebedf0;' }, [
-            h('td', { style: 'padding: 12px;' }, item.suppName),
-            h('td', { style: 'padding: 12px; font-family: monospace; color: #fa8c16;' }, item.suppOrderNo),
-            h('td', { style: 'padding: 12px; font-family: monospace; color: #1890ff;' }, item.sysOrderNo),
-            h('td', { style: 'padding: 12px; font-weight: bold;' }, item.amount),
-            h('td', { style: 'padding: 12px;' }, h('span', { style: 'background: #f6ffed; color: #52c41a; padding: 4px 8px; border-radius: 4px; font-size: 12px;' }, item.status)),
-            h('td', { style: 'padding: 12px;' }, h('span', { style: 'background: #e6f7ff; color: #1890ff; padding: 4px 8px; border-radius: 4px; font-size: 12px;' }, item.matchType)),
-            h('td', { style: 'padding: 12px; color: #909399;' }, item.date)
-          ])
-        ) : [h('tr', {}, [h('td', { colspan: 7, style: 'text-align: center; padding: 24px; color: #909399;' }, '未找到符合条件的供应商订单')])])
-      ])
+      h('h3', { style: 'margin-top: 0;' }, '🏭 供應商訂單管理中心'),
+      renderFilterHeader(true)
     ])
 
     const renderCollectOrders = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '📥 代收订单管理'),
-      renderFilterHeader(false),
-      h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #f5f7fa; border-bottom: 2px solid #e4e7ed;' }, [
-            h('th', { style: 'padding: 12px;' }, 'BC pay代收单号'),
-            h('th', { style: 'padding: 12px;' }, '供应商单号'),
-            h('th', { style: 'padding: 12px;' }, '所属商户'),
-            h('th', { style: 'padding: 12px;' }, '金额'),
-            h('th', { style: 'padding: 12px;' }, '手续费'),
-            h('th', { style: 'padding: 12px;' }, '状态'),
-            h('th', { style: 'padding: 12px;' }, '日期')
-          ])
-        ]),
-        h('tbody', {}, filteredCollectOrders.length ? filteredCollectOrders.map(item => 
-          h('tr', { style: 'border-bottom: 1px solid #ebedf0;' }, [
-            h('td', { style: 'padding: 12px; font-family: monospace; color: #1890ff;' }, item.sysOrderNo),
-            h('td', { style: 'padding: 12px; font-family: monospace; color: #909399;' }, item.suppOrderNo),
-            h('td', { style: 'padding: 12px;' }, item.merchant),
-            h('td', { style: 'padding: 12px; font-weight: bold; color: #52c41a;' }, item.amount),
-            h('td', { style: 'padding: 12px; color: #f5222d;' }, item.fee),
-            h('td', { style: 'padding: 12px;' }, h('span', { style: 'background: #f6ffed; color: #52c41a; padding: 4px 8px; border-radius: 4px; font-size: 12px;' }, item.status)),
-            h('td', { style: 'padding: 12px; color: #909399;' }, item.date)
-          ])
-        ) : [h('tr', {}, [h('td', { colspan: 7, style: 'text-align: center; padding: 24px; color: #909399;' }, '无对应代收订单')])])
-      ])
+      h('h3', { style: 'margin-top: 0;' }, '📥 代收訂單管理'),
+      renderFilterHeader(false)
     ])
 
     const renderPayoutOrders = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '📤 代付订单管理'),
-      renderFilterHeader(false),
-      h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #f5f7fa; border-bottom: 2px solid #e4e7ed;' }, [
-            h('th', { style: 'padding: 12px;' }, 'BC pay代付单号'),
-            h('th', { style: 'padding: 12px;' }, '供应商单号'),
-            h('th', { style: 'padding: 12px;' }, '申请商户'),
-            h('th', { style: 'padding: 12px;' }, '代付金额'),
-            h('th', { style: 'padding: 12px;' }, '手续费'),
-            h('th', { style: 'padding: 12px;' }, '状态'),
-            h('th', { style: 'padding: 12px;' }, '日期')
-          ])
-        ]),
-        h('tbody', {}, filteredPayoutOrders.length ? filteredPayoutOrders.map(item => 
-          h('tr', { style: 'border-bottom: 1px solid #ebedf0;' }, [
-            h('td', { style: 'padding: 12px; font-family: monospace; color: #1890ff;' }, item.sysOrderNo),
-            h('td', { style: 'padding: 12px; font-family: monospace; color: #909399;' }, item.suppOrderNo),
-            h('td', { style: 'padding: 12px;' }, item.merchant),
-            h('td', { style: 'padding: 12px; font-weight: bold; color: #fa8c16;' }, item.amount),
-            h('td', { style: 'padding: 12px; color: #f5222d;' }, item.fee),
-            h('td', { style: 'padding: 12px;' }, h('span', { style: 'background: #fffbe6; color: #fa8c16; padding: 4px 8px; border-radius: 4px; font-size: 12px;' }, item.status)),
-            h('td', { style: 'padding: 12px; color: #909399;' }, item.date)
-          ])
-        ) : [h('tr', {}, [h('td', { colspan: 7, style: 'text-align: center; padding: 24px; color: #909399;' }, '无对应代付订单')])])
-      ])
+      h('h3', { style: 'margin-top: 0;' }, '📤 代付訂單管理'),
+      renderFilterHeader(false)
     ])
 
     const renderMerchantSettings = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '🏢 商户开户设置中心'),
-      h('div', { style: 'display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #e4e7ed; padding-bottom: 10px;' }, [
-        h('button', { onClick: () => this.merchantTab = 'query', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; ${this.merchantTab === 'query' ? 'background: #1890ff; color: white;' : 'background: #f4f4f5; color: #606266;'}` }, '🔍 商户查询页面'),
-        h('button', { onClick: () => this.merchantTab = 'config', style: `padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; ${this.merchantTab === 'config' ? 'background: #52c41a; color: white;' : 'background: #f4f4f5; color: #606266;'}` }, '⚙️ 商户开户配置页面')
-      ]),
-      this.merchantTab === 'query' ? h('div', [
-        h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
-          h('thead', {}, [
-            h('tr', { style: 'background: #f5f7fa; border-bottom: 2px solid #e4e7ed;' }, [
-              h('th', { style: 'padding: 12px;' }, '商户号'),
-              h('th', { style: 'padding: 12px;' }, '商户名称'),
-              h('th', { style: 'padding: 12px;' }, 'API AppKey'),
-              h('th', { style: 'padding: 12px;' }, '签约费率'),
-              h('th', { style: 'padding: 12px;' }, '账户余额'),
-              h('th', { style: 'padding: 12px;' }, '状态')
-            ])
-          ]),
-          h('tbody', {}, this.merchants.map(m => 
-            h('tr', { style: 'border-bottom: 1px solid #ebedf0;' }, [
-              h('td', { style: 'padding: 12px; font-weight: bold;' }, m.id),
-              h('td', { style: 'padding: 12px;' }, m.name),
-              h('td', { style: 'padding: 12px; font-family: monospace; color: #fa8c16;' }, m.appKey),
-              h('td', { style: 'padding: 12px;' }, m.rate),
-              h('td', { style: 'padding: 12px; color: #52c41a; font-weight: bold;' }, m.balance),
-              h('td', { style: 'padding: 12px;' }, h('span', { style: 'background: #f6ffed; color: #52c41a; padding: 4px 8px; border-radius: 4px; font-size: 12px;' }, m.status))
-            ])
-          ))
-        ])
-      ]) : h('div', { style: 'max-width: 500px; background: #f8f9fa; padding: 20px; border-radius: 8px;' }, [
-        h('h4', { style: 'margin-top: 0;' }, '开设新商户账号'),
-        h('div', { style: 'display: grid; gap: 12px;' }, [
-          h('div', {}, [
-            h('label', { style: 'display: block; font-size: 13px; margin-bottom: 4px; font-weight: bold;' }, '商户全称:'),
-            h('input', { placeholder: '例如: 某某科技公司', value: this.newMerchant.name, onInput: e => this.newMerchant.name = e.target.value, style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ]),
-          h('div', {}, [
-            h('label', { style: 'display: block; font-size: 13px; margin-bottom: 4px; font-weight: bold;' }, '代收费率 (%):'),
-            h('input', { value: this.newMerchant.rate, onInput: e => this.newMerchant.rate = e.target.value, style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ]),
-          h('div', {}, [
-            h('label', { style: 'display: block; font-size: 13px; margin-bottom: 4px; font-weight: bold;' }, '代付费率 (定额/笔):'),
-            h('input', { value: this.newMerchant.payoutFee, onInput: e => this.newMerchant.payoutFee = e.target.value, style: 'width: 100%; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px;' })
-          ]),
-          h('button', { onClick: () => this.submitCreateMerchant(), style: 'background: #52c41a; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer; font-weight: bold;' }, '确认开户并自动生成 AppKey')
-        ])
-      ])
+      h('h3', { style: 'margin-top: 0;' }, '🏢 商戶開戶設置中心')
     ])
 
     const renderMerchantPayout = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '💸 商户下发审核打款'),
-      h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
-        h('thead', {}, [
-          h('tr', { style: 'background: #f5f7fa; border-bottom: 2px solid #e4e7ed;' }, [
-            h('th', { style: 'padding: 12px;' }, '下发单号'),
-            h('th', { style: 'padding: 12px;' }, '申请商户'),
-            h('th', { style: 'padding: 12px;' }, '下发金额'),
-            h('th', { style: 'padding: 12px;' }, '收款银行'),
-            h('th', { style: 'padding: 12px;' }, '状态'),
-            h('th', { style: 'padding: 12px;' }, '申请时间'),
-            h('th', { style: 'padding: 12px;' }, '审核操作')
-          ])
-        ]),
-        h('tbody', {}, this.payoutRequests.map(p => 
-          h('tr', { style: 'border-bottom: 1px solid #ebedf0;' }, [
-            h('td', { style: 'padding: 12px; font-family: monospace;' }, p.id),
-            h('td', { style: 'padding: 12px; font-weight: bold;' }, p.merchant),
-            h('td', { style: 'padding: 12px; color: #f5222d; font-weight: bold;' }, p.amount),
-            h('td', { style: 'padding: 12px;' }, p.bank),
-            h('td', { style: 'padding: 12px;' }, h('span', { style: `padding: 4px 8px; border-radius: 4px; font-size: 12px; background: ${p.status === '已下发' ? '#f6ffed' : '#fff1f0'}; color: ${p.status === '已下发' ? '#52c41a' : '#f5222d'};` }, p.status)),
-            h('td', { style: 'padding: 12px; color: #909399;' }, p.time),
-            h('td', { style: 'padding: 12px;' }, p.status === '待审核' ? h('button', { onClick: () => this.approvePayout(p), style: 'background: #1890ff; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer;' }, '同意打款') : '✓ 已打款')
-          ])
-        ))
-      ])
+      h('h3', { style: 'margin-top: 0;' }, '💸 商戶下發審核打款')
     ])
 
     const renderReportSettlement = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0;' }, '📊 报表结算中心'),
-      renderFilterHeader(false),
-      h('div', { style: 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px;' }, [
-        h('div', { style: 'border: 1px solid #e4e7ed; padding: 20px; border-radius: 8px; text-align: center;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '本月结算总代收'),
-          h('div', { style: 'font-size: 24px; font-weight: bold; margin: 10px 0;' }, '￥4,850,200.00'),
-          h('button', { 
-            onClick: () => this.exportReportCSV("BCPay_Collect_Report", [
-              ["BC pay单号", "供应商单号", "商户", "金额", "手续费", "状态", "日期"],
-              ...this.collectOrders.map(o => [o.sysOrderNo, o.suppOrderNo, o.merchant, o.amount, o.fee, o.status, o.date])
-            ]), 
-            style: 'background: #52c41a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;' 
-          }, '📥 真实导出代收 CSV')
-        ]),
-        h('div', { style: 'border: 1px solid #e4e7ed; padding: 20px; border-radius: 8px; text-align: center;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '本月结算总代付'),
-          h('div', { style: 'font-size: 24px; font-weight: bold; color: #fa8c16; margin: 10px 0;' }, '￥2,120,000.00'),
-          h('button', { 
-            onClick: () => this.exportReportCSV("BCPay_Payout_Report", [
-              ["BC pay单号", "供应商单号", "商户", "金额", "手续费", "状态", "日期"],
-              ...this.payoutOrders.map(o => [o.sysOrderNo, o.suppOrderNo, o.merchant, o.amount, o.fee, o.status, o.date])
-            ]), 
-            style: 'background: #fa8c16; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;' 
-          }, '📥 真实导出代付 CSV')
-        ]),
-        h('div', { style: 'border: 1px solid #e4e7ed; padding: 20px; border-radius: 8px; text-align: center;' }, [
-          h('div', { style: 'color: #909399; font-size: 14px;' }, '平台交易净利润'),
-          h('div', { style: 'font-size: 24px; font-weight: bold; color: #f5222d; margin: 10px 0;' }, '￥28,401.20'),
-          h('button', { onClick: () => alert('已自动生成对账分析凭证！'), style: 'background: #1890ff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;' }, '📄 结算对账凭证')
-        ])
-      ])
+      h('h3', { style: 'margin-top: 0;' }, '📊 報表結算中心')
     ])
 
-    // 新修改的【通道权重配置】页面
     const renderGatewaysConfig = () => h('div', { style: 'background: #fff; padding: 20px; border-radius: 8px;' }, [
-      h('h3', { style: 'margin-top: 0; margin-bottom: 8px;' }, '⚖️ 通道权重与分流策略'),
-      h('p', { style: 'color: #606266; font-size: 13px; margin-bottom: 20px;' }, '根据通道权重自动分配交易流量比例，数值越高优先分配路由。'),
-      h('div', { style: 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;' }, this.paymentGateways.map(gw => 
-        h('div', { style: 'border: 1px solid #e8e8e8; padding: 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background: #fafafa;' }, [
-          h('div', [
-            h('div', { style: 'font-size: 18px; font-weight: bold; margin-bottom: 6px; color: #1f2937;' }, `${gw.icon} ${gw.name}`),
-            h('div', { style: 'font-size: 13px; color: #606266; margin-bottom: 4px;' }, `结算费率: ${gw.fee}`),
-            h('div', { style: 'display: flex; align-items: center; gap: 8px; margin-top: 8px;' }, [
-              h('span', { style: 'font-size: 13px; font-weight: bold; color: #1890ff;' }, `通道权重:`),
-              h('input', { 
-                type: 'number', 
-                value: gw.weight, 
-                onInput: e => gw.weight = Number(e.target.value),
-                style: 'width: 60px; padding: 2px 6px; border: 1px solid #d9d9d9; border-radius: 4px;' 
-              }),
-              h('span', { style: 'font-size: 12px; color: #52c41a; background: #f6ffed; padding: 2px 6px; border-radius: 4px;' }, `预计分流 ${gw.trafficRate}`)
-            ])
-          ]),
-          h('button', { 
-            onClick: () => this.toggleGateway(gw), 
-            style: `padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; background: ${gw.status ? '#52c41a' : '#bfbfbf'};` 
-          }, gw.status ? '已启用' : '已停用')
-        ])
-      ))
+      h('h3', { style: 'margin-top: 0;' }, '⚖️ 通道權重與分流策略')
     ])
 
     return h('div', { style: 'display: flex; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f0f2f5;' }, [
-      // 更改后的浅蓝色侧边栏 (Light Blue Sidebar)
+      // 淺藍色側邊欄
       h('div', { style: 'width: 240px; background: #e6f7ff; border-right: 1px solid #bae7ff; color: #002c8c; display: flex; flex-direction: column;' }, [
-        h('div', { style: 'padding: 20px 16px; font-size: 20px; font-weight: bold; color: #096dd9; border-bottom: 1px solid #bae7ff; background: #e6f2ff;' }, '💳 BC pay 管理后台'),
+        h('div', { style: 'padding: 20px 16px; font-size: 20px; font-weight: bold; color: #096dd9; border-bottom: 1px solid #bae7ff; background: #e6f2ff;' }, '💳 BC pay 管理後台'),
         h('div', { style: 'flex: 1; padding: 12px 0;' }, [
-          h('div', { onClick: () => this.handleSelectMenu('payment_overview'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'payment_overview' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'payment_overview' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'payment_overview' ? '4px solid #096dd9' : 'none'};` }, '📈 支付数据大屏'),
-          h('div', { onClick: () => this.handleSelectMenu('gateways'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'gateways' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'gateways' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'gateways' ? '4px solid #096dd9' : 'none'};` }, '⚖️ 通道权重配置'),
-          h('div', { onClick: () => this.handleSelectMenu('supplier'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'supplier' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'supplier' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'supplier' ? '4px solid #096dd9' : 'none'};` }, '🏭 供应商'),
-          h('div', { onClick: () => this.handleSelectMenu('collect_orders'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'collect_orders' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'collect_orders' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'collect_orders' ? '4px solid #096dd9' : 'none'};` }, '📥 代收订单'),
-          h('div', { onClick: () => this.handleSelectMenu('payout_orders'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'payout_orders' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'payout_orders' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'payout_orders' ? '4px solid #096dd9' : 'none'};` }, '📤 代付订单'),
-          h('div', { onClick: () => this.handleSelectMenu('merchant_settings'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'merchant_settings' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'merchant_settings' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'merchant_settings' ? '4px solid #096dd9' : 'none'};` }, '🏢 商户开户设置'),
-          h('div', { onClick: () => this.handleSelectMenu('merchant_payout'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'merchant_payout' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'merchant_payout' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'merchant_payout' ? '4px solid #096dd9' : 'none'};` }, '💸 商户下发'),
-          h('div', { onClick: () => this.handleSelectMenu('report_settlement'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'report_settlement' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'report_settlement' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'report_settlement' ? '4px solid #096dd9' : 'none'};` }, '📊 报表结算')
+          h('div', { onClick: () => this.handleSelectMenu('run_summary'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'run_summary' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'run_summary' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'run_summary' ? '4px solid #096dd9' : 'none'};` }, '📊 代收付跑量總表'),
+          h('div', { onClick: () => this.handleSelectMenu('payment_overview'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'payment_overview' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'payment_overview' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'payment_overview' ? '4px solid #096dd9' : 'none'};` }, '📈 支付數據大屏'),
+          h('div', { onClick: () => this.handleSelectMenu('gateways'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'gateways' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'gateways' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'gateways' ? '4px solid #096dd9' : 'none'};` }, '⚖️ 通道權重配置'),
+          h('div', { onClick: () => this.handleSelectMenu('supplier'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'supplier' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'supplier' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'supplier' ? '4px solid #096dd9' : 'none'};` }, '🏭 供應商'),
+          h('div', { onClick: () => this.handleSelectMenu('collect_orders'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'collect_orders' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'collect_orders' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'collect_orders' ? '4px solid #096dd9' : 'none'};` }, '📥 代收訂單'),
+          h('div', { onClick: () => this.handleSelectMenu('payout_orders'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'payout_orders' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'payout_orders' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'payout_orders' ? '4px solid #096dd9' : 'none'};` }, '📤 代付訂單'),
+          h('div', { onClick: () => this.handleSelectMenu('merchant_settings'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'merchant_settings' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'merchant_settings' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'merchant_settings' ? '4px solid #096dd9' : 'none'};` }, '🏢 商戶開戶設置'),
+          h('div', { onClick: () => this.handleSelectMenu('merchant_payout'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'merchant_payout' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'merchant_payout' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'merchant_payout' ? '4px solid #096dd9' : 'none'};` }, '💸 商戶下發'),
+          h('div', { onClick: () => this.handleSelectMenu('report_settlement'), style: `padding: 12px 20px; cursor: pointer; font-weight: 500; color: ${this.activeMenu === 'report_settlement' ? '#096dd9' : '#434343'}; background: ${this.activeMenu === 'report_settlement' ? '#bae7ff' : 'transparent'}; border-right: ${this.activeMenu === 'report_settlement' ? '4px solid #096dd9' : 'none'};` }, '📊 報表結算')
         ])
       ]),
 
-      // 右侧主内容区
+      // 右側內容區
       h('div', { style: 'flex: 1; display: flex; flex-direction: column;' }, [
         h('div', { style: 'height: 60px; background: #fff; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.05);' }, [
-          h('div', { style: 'font-weight: bold; font-size: 16px; color: #1f2937;' }, 'BC pay 运营管理系统'),
+          h('div', { style: 'font-weight: bold; font-size: 16px; color: #1f2937;' }, 'BC pay 運營管理系統'),
           h('div', { style: 'display: flex; align-items: center; gap: 12px;' }, [
             h('span', { style: 'background: #52c41a; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px;' }, 'BC pay v2.1.0'),
-            h('a', { href: 'https://render.com', target: '_blank', style: 'color: #8c8c8c; font-size: 14px; text-decoration: none;' }, '托管于 Render')
+            h('a', { href: 'https://render.com', target: '_blank', style: 'color: #8c8c8c; font-size: 14px; text-decoration: none;' }, '託管於 Render')
           ])
         ]),
 
         h('div', { style: 'padding: 24px; flex: 1;' }, [
+          this.activeMenu === 'run_summary' ? renderRunSummaryModule() : null,
           this.activeMenu === 'payment_overview' ? renderPaymentOverview() : null,
           this.activeMenu === 'gateways' ? renderGatewaysConfig() : null,
           this.activeMenu === 'supplier' ? renderSupplierModule() : null,
