@@ -1,57 +1,8 @@
-import { createApp } from 'vue'
+import { createApp, h } from 'vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 
-const App = {
-  template: `
-    <div style="padding: 20px; font-family: sans-serif; background-color: #f5f7fa; min-height: 100vh;">
-      <el-card shadow="always">
-        <template #header>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0; color: #409EFF;">🛒 电子商务管理系统后台</h2>
-            <el-tag type="success">系统运行正常 (v1.0.0)</el-tag>
-          </div>
-        </template>
-        
-        <el-row :gutter="20" style="margin-bottom: 20px;">
-          <el-col :span="8">
-            <el-statistic title="今日总销售额" :value="128450">
-              <template #suffix>元</template>
-            </el-statistic>
-          </el-col>
-          <el-col :span="8">
-            <el-statistic title="今日订单量" :value="1240">
-              <template #suffix>单</template>
-            </el-statistic>
-          </el-col>
-          <el-col :span="8">
-            <el-statistic title="新增用户" :value="358">
-              <template #suffix>人</template>
-            </el-statistic>
-          </el-col>
-        </el-row>
-
-        <el-alert
-          title="恭喜！你的云端电商后台网站已成功架设并上线！"
-          type="success"
-          show-icon
-          :closable="false"
-          style="margin-bottom: 20px;"
-        />
-
-        <el-table :data="tableData" stripe style="width: 100%">
-          <el-table-column prop="date" label="订单日期" width="180" />
-          <el-table-column prop="name" label="客户姓名" width="180" />
-          <el-table-column prop="amount" label="金额" />
-          <el-table-column prop="status" label="状态">
-            <template #default="scope">
-              <el-tag type="success">{{ scope.row.status }}</el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
-    </div>
-  `,
+const app = createApp({
   data() {
     return {
       tableData: [
@@ -60,9 +11,59 @@ const App = {
         { date: '2026-08-11', name: '王五', amount: '￥56.00', status: '已完成' }
       ]
     }
-  }
-}
+  },
+  render() {
+    return h('div', { style: 'padding: 30px; font-family: Arial, sans-serif; background-color: #f5f7fa; min-height: 100vh;' }, [
+      h('div', { style: 'background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);' }, [
+        h('div', { style: 'display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 16px; margin-bottom: 20px;' }, [
+          h('h1', { style: 'margin: 0; color: #409EFF; font-size: 24px;' }, '🛒 电子商务管理系统后台'),
+          h('span', { style: 'background: #f0f9eb; color: #67c23a; padding: 6px 12px; border-radius: 4px; font-weight: bold; border: 1px solid #e1f3d8;' }, '● 系统运行正常 (v1.0.0)')
+        ]),
+        
+        h('div', { style: 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px;' }, [
+          h('div', { style: 'background: #f8f9fa; padding: 16px; border-radius: 6px; border: 1px solid #eaecf0;' }, [
+            h('div', { style: 'color: #666; font-size: 14px;' }, '今日总销售额'),
+            h('div', { style: 'font-size: 28px; font-weight: bold; color: #303133; margin-top: 8px;' }, '￥128,450')
+          ]),
+          h('div', { style: 'background: #f8f9fa; padding: 16px; border-radius: 6px; border: 1px solid #eaecf0;' }, [
+            h('div', { style: 'color: #666; font-size: 14px;' }, '今日订单量'),
+            h('div', { style: 'font-size: 28px; font-weight: bold; color: #303133; margin-top: 8px;' }, '1,240 单')
+          ]),
+          h('div', { style: 'background: #f8f9fa; padding: 16px; border-radius: 6px; border: 1px solid #eaecf0;' }, [
+            h('div', { style: 'color: #666; font-size: 14px;' }, '新增用户'),
+            h('div', { style: 'font-size: 28px; font-weight: bold; color: #303133; margin-top: 8px;' }, '358 人')
+          ])
+        ]),
 
-const app = createApp(App)
+        h('div', { style: 'background: #f0f9eb; color: #67c23a; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px; border: 1px solid #e1f3d8;' }, 
+          '🎉 恭喜！你的云端电商后台网站已成功部署到 Render 上！'
+        ),
+
+        h('h3', { style: 'color: #303133; margin-bottom: 16px;' }, '最新订单明细'),
+        h('table', { style: 'width: 100%; border-collapse: collapse; text-align: left;' }, [
+          h('thead', {}, [
+            h('tr', { style: 'background-color: #fafafa; border-bottom: 2px solid #e8e8e8;' }, [
+              h('th', { style: 'padding: 12px;' }, '订单日期'),
+              h('th', { style: 'padding: 12px;' }, '客户姓名'),
+              h('th', { style: 'padding: 12px;' }, '金额'),
+              h('th', { style: 'padding: 12px;' }, '状态')
+            ])
+          ]),
+          h('tbody', {}, this.tableData.map(item => 
+            h('tr', { style: 'border-bottom: 1px solid #f0f0f0;' }, [
+              h('td', { style: 'padding: 12px;' }, item.date),
+              h('td', { style: 'padding: 12px;' }, item.name),
+              h('td', { style: 'padding: 12px;' }, item.amount),
+              h('td', { style: 'padding: 12px;' }, 
+                h('span', { style: 'background: #e8f4ff; color: #1890ff; padding: 4px 8px; border-radius: 4px; font-size: 12px;' }, item.status)
+              )
+            ])
+          ))
+        ])
+      ])
+    ])
+  }
+})
+
 app.use(ElementPlus)
 app.mount('#app')
