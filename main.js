@@ -5,14 +5,14 @@ import 'element-plus/dist/index.css'
 const app = createApp({
   template: `
     <div class="layout-container">
-      <!-- 左側選單欄 (淺藍色系樹狀選單) -->
+      <!-- 左側選單欄 -->
       <div class="sidebar">
         <div>
           <div class="sidebar-logo">💳 BCPay 管理系統</div>
           <div class="sidebar-menu">
             <template v-for="item in menuItems" :key="item.key">
               
-              <!-- 有子選單的層級 -->
+              <!-- 有子選單 -->
               <div v-if="item.children">
                 <div 
                   class="menu-item menu-parent"
@@ -49,7 +49,7 @@ const app = createApp({
             </template>
           </div>
         </div>
-        <div class="sidebar-footer">v2.5.0 Build 2026</div>
+        <div class="sidebar-footer">v2.6.0 Build 2026</div>
       </div>
 
       <!-- 主內容區 -->
@@ -60,7 +60,7 @@ const app = createApp({
           <h3 style="margin-top:0;">⚙️ 渠道權重設定</h3>
           <table class="data-table">
             <thead>
-              <tr><th>渠道名稱</th><th>當前權重 (1-100)</th><th>分流比例 (預估)</th><th>操作</th></tr>
+              <tr><th>渠道名稱</th><th>當前權重 (1-100)</th><th>分流比例</th><th>操作</th></tr>
             </thead>
             <tbody>
               <tr v-for="c in channels" :key="c.id">
@@ -101,83 +101,62 @@ const app = createApp({
           </table>
         </div>
 
-        <!-- 2-1. 供應商代收訂單 -->
-        <div v-else-if="activeMenu === 'sup_collect'" class="card">
+        <!-- 2. 供應商訂單查詢 (4個子頁皆統一：3訂單號 + 日/月選擇 + 底部列表) -->
+        <div v-else-if="isSupplierQueryMenu" class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0;">🏭 供應商代收訂單</h3>
-            <div style="display:flex; gap:10px;">
-              <input type="date" v-model="filterDate" class="input-control" />
-              <button class="btn btn-primary" @click="exportCSV('供應商代收訂單.csv')">📥 導出 CSV</button>
-            </div>
+            <h3 style="margin:0;">🏭 {{ getMenuTitle(activeMenu) }}</h3>
+            <button class="btn btn-primary" @click="exportCSV(getMenuTitle(activeMenu) + '.csv')">📥 導出 CSV</button>
           </div>
+          
+          <div class="search-box-group" style="margin-bottom: 20px;">
+            <input type="text" v-model="searchQuery.mchNo" placeholder="商戶訂單號" class="input-control" />
+            <input type="text" v-model="searchQuery.sysNo" placeholder="系統訂單號" class="input-control" />
+            <input type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號" class="input-control" />
+            
+            <select v-model="searchQuery.dateType" class="input-control" style="width: 100px;">
+              <option value="day">按日選擇</option>
+              <option value="month">按月選擇</option>
+            </select>
+            <input :type="searchQuery.dateType === 'day' ? 'date' : 'month'" v-model="searchQuery.selectedDate" class="input-control" />
+            
+            <button class="btn btn-primary" @click="handleExactSearch(getMenuTitle(activeMenu))">🔍 查詢</button>
+          </div>
+
           <table class="data-table">
             <thead>
               <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>供應商</th><th>金額</th><th>狀態</th></tr>
             </thead>
             <tbody>
-              <tr v-for="o in supCollectList" :key="o.sysNo">
+              <tr v-for="o in activeSupplierList" :key="o.sysNo">
                 <td>{{ o.date }}</td><td><code>{{ o.mchNo }}</code></td><td><code>{{ o.sysNo }}</code></td><td><code>{{ o.supNo }}</code></td><td>{{ o.supplier }}</td>
-                <td style="color:#52c41a; font-weight:bold;">￥{{ o.amount.toLocaleString() }}</td>
+                <td :style="{ color: isPayoutMenu(activeMenu) ? '#fa8c16' : '#52c41a', fontWeight: 'bold' }">￥{{ o.amount.toLocaleString() }}</td>
                 <td><span class="status-badge status-success">{{ o.status }}</span></td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- 2-2. 供應商代收訂單(精準) -->
-        <div v-else-if="activeMenu === 'sup_collect_exact'" class="card">
-          <h3 style="margin-top:0;">🎯 供應商代收訂單 (精準查詢)</h3>
-          <div class="search-box-group">
+        <!-- 3. 代收訂單查詢 (一般: 2欄 / 精準: 3欄 + 日/月選擇 + 底部列表) -->
+        <div v-else-if="isCollectQueryMenu" class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 style="margin:0;">📥 {{ getMenuTitle(activeMenu) }}</h3>
+            <button class="btn btn-primary" @click="exportCSV(getMenuTitle(activeMenu) + '.csv')">📥 導出 CSV</button>
+          </div>
+
+          <div class="search-box-group" style="margin-bottom: 20px;">
             <input type="text" v-model="searchQuery.mchNo" placeholder="商戶訂單號" class="input-control" />
             <input type="text" v-model="searchQuery.sysNo" placeholder="系統訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號" class="input-control" />
-            <button class="btn btn-primary" @click="handleExactSearch('供應商代收')">🔍 精準搜尋</button>
+            <input v-if="activeMenu === 'collect_exact'" type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號 (精準)" class="input-control" />
+            
+            <select v-model="searchQuery.dateType" class="input-control" style="width: 100px;">
+              <option value="day">按日選擇</option>
+              <option value="month">按月選擇</option>
+            </select>
+            <input :type="searchQuery.dateType === 'day' ? 'date' : 'month'" v-model="searchQuery.selectedDate" class="input-control" />
+            
+            <button class="btn btn-primary" @click="handleExactSearch(getMenuTitle(activeMenu))">🔍 查詢</button>
           </div>
-        </div>
 
-        <!-- 2-3. 供應商代付訂單 -->
-        <div v-else-if="activeMenu === 'sup_payout'" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0;">🏭 供應商代付訂單</h3>
-            <div style="display:flex; gap:10px;">
-              <input type="date" v-model="filterDate" class="input-control" />
-              <button class="btn btn-primary" @click="exportCSV('供應商代付訂單.csv')">📥 導出 CSV</button>
-            </div>
-          </div>
-          <table class="data-table">
-            <thead>
-              <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>供應商</th><th>金額</th><th>狀態</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="o in supPayoutList" :key="o.sysNo">
-                <td>{{ o.date }}</td><td><code>{{ o.mchNo }}</code></td><td><code>{{ o.sysNo }}</code></td><td><code>{{ o.supNo }}</code></td><td>{{ o.supplier }}</td>
-                <td style="color:#fa8c16; font-weight:bold;">￥{{ o.amount.toLocaleString() }}</td>
-                <td><span class="status-badge status-success">{{ o.status }}</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 2-4. 供應商代付訂單(精準) -->
-        <div v-else-if="activeMenu === 'sup_payout_exact'" class="card">
-          <h3 style="margin-top:0;">🎯 供應商代付訂單 (精準查詢)</h3>
-          <div class="search-box-group">
-            <input type="text" v-model="searchQuery.mchNo" placeholder="商戶訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.sysNo" placeholder="系統訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號" class="input-control" />
-            <button class="btn btn-primary" @click="handleExactSearch('供應商代付')">🔍 精準搜尋</button>
-          </div>
-        </div>
-
-        <!-- 3-1. 代收訂單查詢 -->
-        <div v-else-if="activeMenu === 'collect_orders'" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0;">📥 代收訂單查詢</h3>
-            <div style="display:flex; gap:10px;">
-              <input type="date" v-model="filterDate" class="input-control" />
-              <button class="btn btn-primary" @click="exportCSV('代收訂單.csv')">📥 導出 CSV</button>
-            </div>
-          </div>
           <table class="data-table">
             <thead>
               <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>商戶</th><th>金額</th><th>狀態</th></tr>
@@ -192,26 +171,27 @@ const app = createApp({
           </table>
         </div>
 
-        <!-- 3-2. 代收訂單查詢(精準) -->
-        <div v-else-if="activeMenu === 'collect_exact'" class="card">
-          <h3 style="margin-top:0;">🎯 代收訂單 (精準查詢)</h3>
-          <div class="search-box-group">
+        <!-- 4. 代付訂單查詢 (一般: 2欄 / 精準: 3欄 + 日/月選擇 + 底部列表) -->
+        <div v-else-if="isPayoutQueryMenu" class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 style="margin:0;">📤 {{ getMenuTitle(activeMenu) }}</h3>
+            <button class="btn btn-primary" @click="exportCSV(getMenuTitle(activeMenu) + '.csv')">📥 導出 CSV</button>
+          </div>
+
+          <div class="search-box-group" style="margin-bottom: 20px;">
             <input type="text" v-model="searchQuery.mchNo" placeholder="商戶訂單號" class="input-control" />
             <input type="text" v-model="searchQuery.sysNo" placeholder="系統訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號" class="input-control" />
-            <button class="btn btn-primary" @click="handleExactSearch('代收訂單')">🔍 精準搜尋</button>
+            <input v-if="activeMenu === 'payout_exact'" type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號 (精準)" class="input-control" />
+            
+            <select v-model="searchQuery.dateType" class="input-control" style="width: 100px;">
+              <option value="day">按日選擇</option>
+              <option value="month">按月選擇</option>
+            </select>
+            <input :type="searchQuery.dateType === 'day' ? 'date' : 'month'" v-model="searchQuery.selectedDate" class="input-control" />
+            
+            <button class="btn btn-primary" @click="handleExactSearch(getMenuTitle(activeMenu))">🔍 查詢</button>
           </div>
-        </div>
 
-        <!-- 4-1. 代付訂單查詢 -->
-        <div v-else-if="activeMenu === 'payout_orders'" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0;">📤 代付訂單查詢</h3>
-            <div style="display:flex; gap:10px;">
-              <input type="date" v-model="filterDate" class="input-control" />
-              <button class="btn btn-primary" @click="exportCSV('代付訂單.csv')">📥 導出 CSV</button>
-            </div>
-          </div>
           <table class="data-table">
             <thead>
               <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>商戶</th><th>金額</th><th>狀態</th></tr>
@@ -226,35 +206,24 @@ const app = createApp({
           </table>
         </div>
 
-        <!-- 4-2. 代付訂單查詢(精準) -->
-        <div v-else-if="activeMenu === 'payout_exact'" class="card">
-          <h3 style="margin-top:0;">🎯 代付訂單 (精準查詢)</h3>
-          <div class="search-box-group">
-            <input type="text" v-model="searchQuery.mchNo" placeholder="商戶訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.sysNo" placeholder="系統訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號" class="input-control" />
-            <button class="btn btn-primary" @click="handleExactSearch('代付訂單')">🔍 精準搜尋</button>
-          </div>
-        </div>
-
-        <!-- 5. 商戶列表 & 商戶餘額調整 -->
+        <!-- 5. 商戶列表 & 商戶餘額/配置調整 -->
         <div v-else-if="activeMenu === 'merchant_list'" class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
-            <h3 style="margin: 0;">🏢 商戶列表與餘額管理</h3>
+            <h3 style="margin: 0;">🏢 商戶列表與配置管理</h3>
             <button class="btn btn-primary" @click="openAddMerchantModal">➕ 新增商戶</button>
           </div>
           <table class="data-table">
             <thead>
-              <tr><th>商戶 ID</th><th>商戶名稱</th><th>目前餘額</th><th>代收費率</th><th>代付費率</th><th>單筆限額</th><th>已串渠道</th><th>狀態</th><th>操作</th></tr>
+              <tr><th>商戶 ID</th><th>商戶名稱</th><th>目前餘額</th><th>費率 (代收/代付)</th><th>單筆限額</th><th>結算模式</th><th>已串渠道</th><th>狀態</th><th>操作</th></tr>
             </thead>
             <tbody>
               <tr v-for="m in merchants" :key="m.id">
                 <td><code>{{ m.id }}</code></td>
                 <td><strong>{{ m.name }}</strong></td>
                 <td style="color:#1890ff; font-weight:bold;">￥{{ (m.rawBalance || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}) }}</td>
-                <td>{{ m.collectFeeRate }}%</td>
-                <td>{{ m.payoutFeeRate }}%</td>
+                <td>{{ m.collectFeeRate }}% / {{ m.payoutFeeRate }}%</td>
                 <td>￥{{ m.minLimit }} - ￥{{ m.maxLimit }}</td>
+                <td><span class="tag" style="background:#f6ffed; color:#52c41a; border-color:#b7eb8f;">{{ m.settleMode || 'D0' }}</span></td>
                 <td>
                   <span v-for="c in m.connectedChannels" :key="c" class="tag" style="margin-right: 4px;">{{ c }}</span>
                 </td>
@@ -264,7 +233,10 @@ const app = createApp({
                   </span>
                 </td>
                 <td>
-                  <button class="btn btn-warning" @click="openBalanceModal(m)">✏️ 餘額調整</button>
+                  <div style="display:flex; gap:6px;">
+                    <button class="btn btn-warning" style="padding: 4px 8px; font-size:12px;" @click="openConfigModal(m)">⚙️ 調整配置</button>
+                    <button class="btn btn-primary" style="padding: 4px 8px; font-size:12px;" @click="openBalanceModal(m)">✏️ 餘額調整</button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -281,7 +253,6 @@ const app = createApp({
             </div>
           </div>
 
-          <!-- 結算明細 -->
           <div v-if="activeMenu === 'settlement_logs'">
             <h4>📜 結算明細變動紀錄</h4>
             <table class="data-table">
@@ -298,7 +269,6 @@ const app = createApp({
             </table>
           </div>
 
-          <!-- 跑量報表數據展示區 -->
           <div v-else>
             <div class="card-grid">
               <div class="card"><div class="card-title">總代收跑量</div><div class="card-value" style="color:#52c41a;">￥{{ totalCollect.toLocaleString() }}</div></div>
@@ -323,9 +293,9 @@ const app = createApp({
       </div>
     </div>
 
-    <!-- 彈窗 1：新增商戶 -->
+    <!-- 彈窗 1：新增商戶 (含 D0/T1 選擇) -->
     <div v-if="showAddMerchantModal" class="modal-backdrop">
-      <div class="modal-box" style="width: 480px;">
+      <div class="modal-box" style="width: 500px;">
         <h3 style="margin-top:0; color: #1890ff;">➕ 新增商戶</h3>
         
         <div style="display:flex; gap:10px;">
@@ -342,22 +312,39 @@ const app = createApp({
         <div style="display:flex; gap:10px;">
           <div class="form-group" style="flex:1;">
             <label>代收費率 (%)：</label>
-            <input type="number" v-model.number="newMerchant.collectFeeRate" step="0.01" class="input-control" placeholder="0.8">
+            <input type="number" v-model.number="newMerchant.collectFeeRate" step="0.01" class="input-control">
           </div>
           <div class="form-group" style="flex:1;">
             <label>代付費率 (%)：</label>
-            <input type="number" v-model.number="newMerchant.payoutFeeRate" step="0.01" class="input-control" placeholder="0.5">
+            <input type="number" v-model.number="newMerchant.payoutFeeRate" step="0.01" class="input-control">
           </div>
         </div>
 
         <div style="display:flex; gap:10px;">
           <div class="form-group" style="flex:1;">
             <label>單筆最小限額：</label>
-            <input type="number" v-model.number="newMerchant.minLimit" class="input-control" placeholder="100">
+            <input type="number" v-model.number="newMerchant.minLimit" class="input-control">
           </div>
           <div class="form-group" style="flex:1;">
             <label>單筆最大限額：</label>
-            <input type="number" v-model.number="newMerchant.maxLimit" class="input-control" placeholder="50000">
+            <input type="number" v-model.number="newMerchant.maxLimit" class="input-control">
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>結算模式：</label>
+            <select v-model="newMerchant.settleMode" class="input-control">
+              <option value="D0">D0 (當日即時結算)</option>
+              <option value="T1">T1 (次工作日結算)</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>商戶啟用狀態：</label>
+            <select v-model="newMerchant.active" class="input-control">
+              <option :value="true">🟢 啟用 (正常營運)</option>
+              <option :value="false">🔴 停用 (暫停交易)</option>
+            </select>
           </div>
         </div>
 
@@ -370,14 +357,6 @@ const app = createApp({
           </div>
         </div>
 
-        <div class="form-group">
-          <label>商戶啟用狀態：</label>
-          <select v-model="newMerchant.active" class="input-control">
-            <option :value="true">🟢 啟用 (正常營運)</option>
-            <option :value="false">🔴 停用 (暫停交易)</option>
-          </select>
-        </div>
-
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
           <button class="btn" @click="showAddMerchantModal = false">取消</button>
           <button class="btn btn-primary" @click="confirmAddMerchant">確認新增</button>
@@ -385,7 +364,72 @@ const app = createApp({
       </div>
     </div>
 
-    <!-- 彈窗 2：商戶餘額調整 -->
+    <!-- 彈窗 2：調整商戶配置小窗框 -->
+    <div v-if="showConfigModal" class="modal-backdrop">
+      <div class="modal-box" style="width: 500px;">
+        <h3 style="margin-top:0; color: #fa8c16;">⚙️ 調整商戶配置 ({{ editingMerchant?.id }})</h3>
+
+        <div class="form-group">
+          <label>商戶名稱：</label>
+          <input type="text" v-model="editingMerchant.name" class="input-control">
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>代收費率 (%)：</label>
+            <input type="number" v-model.number="editingMerchant.collectFeeRate" step="0.01" class="input-control">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>代付費率 (%)：</label>
+            <input type="number" v-model.number="editingMerchant.payoutFeeRate" step="0.01" class="input-control">
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>單筆最小限額：</label>
+            <input type="number" v-model.number="editingMerchant.minLimit" class="input-control">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>單筆最大限額：</label>
+            <input type="number" v-model.number="editingMerchant.maxLimit" class="input-control">
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>結算模式：</label>
+            <select v-model="editingMerchant.settleMode" class="input-control">
+              <option value="D0">D0 (當日即時結算)</option>
+              <option value="T1">T1 (次工作日結算)</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>商戶啟用狀態：</label>
+            <select v-model="editingMerchant.active" class="input-control">
+              <option :value="true">🟢 啟用 (正常營運)</option>
+              <option :value="false">🔴 停用 (暫停交易)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>渠道產品串接選項：</label>
+          <div style="display:flex; gap:12px; margin-top: 6px;">
+            <label v-for="ch in availableChannels" :key="ch" style="font-size:13px; cursor:pointer;">
+              <input type="checkbox" :value="ch" v-model="editingMerchant.connectedChannels"> {{ ch }}
+            </label>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+          <button class="btn" @click="showConfigModal = false">取消</button>
+          <button class="btn btn-warning" @click="saveMerchantConfig">儲存配置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 彈窗 3：商戶餘額調整 -->
     <div v-if="showBalanceModal" class="modal-backdrop">
       <div class="modal-box">
         <h3 style="margin-top:0; color: #1890ff;">✏️ 商戶餘額調整</h3>
@@ -411,7 +455,13 @@ const app = createApp({
       openSubMenus: ['channel_group', 'supplier_group', 'collect_group', 'payout_group', 'settlement_group'],
       filterDate: '',
 
-      searchQuery: { mchNo: '', sysNo: '', supNo: '' },
+      searchQuery: {
+        mchNo: '',
+        sysNo: '',
+        supNo: '',
+        dateType: 'day',
+        selectedDate: '2026-08-13'
+      },
 
       showAddMerchantModal: false,
       availableChannels: ['微信支付直連', '支付寶原生', '銀聯快速代付'],
@@ -423,9 +473,13 @@ const app = createApp({
         payoutFeeRate: 0.5,
         minLimit: 100,
         maxLimit: 50000,
+        settleMode: 'D0',
         connectedChannels: ['微信支付直連', '支付寶原生'],
         active: true
       },
+
+      showConfigModal: false,
+      editingMerchant: null,
 
       showBalanceModal: false,
       selectedMerchantForBalance: null,
@@ -490,38 +544,46 @@ const app = createApp({
       ],
 
       merchants: [
-        { id: 'MCH-1001', name: '閃電電商', rawBalance: 158200.00, collectFeeRate: 0.8, payoutFeeRate: 0.5, minLimit: 100, maxLimit: 50000, connectedChannels: ['微信支付直連', '支付寶原生'], active: true },
-        { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00, collectFeeRate: 0.75, payoutFeeRate: 0.45, minLimit: 100, maxLimit: 50000, connectedChannels: ['銀聯快速代付'], active: true }
+        { id: 'MCH-1001', name: '閃電電商', rawBalance: 158200.00, collectFeeRate: 0.8, payoutFeeRate: 0.5, minLimit: 100, maxLimit: 50000, settleMode: 'D0', connectedChannels: ['微信支付直連', '支付寶原生'], active: true },
+        { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00, collectFeeRate: 0.75, payoutFeeRate: 0.45, minLimit: 100, maxLimit: 50000, settleMode: 'T1', connectedChannels: ['銀聯快速代付'], active: true }
       ],
 
       supCollectList: [
-        { mchNo: 'MCH202608120001', sysNo: 'SYS-C-88101', supNo: 'SUP-WX-9981', date: '2026-08-12', supplier: '匯通通道', amount: 85000, status: '成功' }
+        { mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-WX-9981', date: '2026-08-13 10:20', supplier: '匯通通道', amount: 85000, status: '成功' }
       ],
 
       supPayoutList: [
-        { mchNo: 'MCH202608120099', sysNo: 'SYS-P-99201', supNo: 'SUP-UNION-112', date: '2026-08-12', supplier: '銀聯極速', amount: 45000, status: '成功' }
+        { mchNo: 'MCH202608130099', sysNo: 'SYS-P-99201', supNo: 'SUP-UNION-112', date: '2026-08-13 11:45', supplier: '銀聯極速', amount: 45000, status: '成功' }
       ],
 
       collectList: [
-        { time: '2026-08-12 10:12:00', mchNo: 'MCH202608120001', sysNo: 'SYS-C-88101', supNo: 'SUP-WX-9981', merchant: '閃電電商', amount: 5000, status: '支付成功' }
+        { time: '2026-08-13 10:12:00', mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-WX-9981', merchant: '閃電電商', amount: 5000, status: '支付成功' }
       ],
 
       payoutList: [
-        { time: '2026-08-12 11:05:22', mchNo: 'MCH202608120099', sysNo: 'SYS-P-99201', supNo: 'SUP-UNION-112', merchant: '海淘優選', amount: 20000, status: '打款成功' }
+        { time: '2026-08-13 11:05:22', mchNo: 'MCH202608130099', sysNo: 'SYS-P-99201', supNo: 'SUP-UNION-112', merchant: '海淘優選', amount: 20000, status: '打款成功' }
       ],
 
       runSummaryList: [
-        { date: '2026-08-12', merchant: '閃電電商', channel: '微信支付', collectAmt: 158200, payoutAmt: 50000 },
-        { date: '2026-08-12', merchant: '海淘優選', channel: '支付寶', collectAmt: 89300, payoutAmt: 20000 }
+        { date: '2026-08-13', merchant: '閃電電商', channel: '微信支付', collectAmt: 158200, payoutAmt: 50000 },
+        { date: '2026-08-13', merchant: '海淘優選', channel: '支付寶', collectAmt: 89300, payoutAmt: 20000 }
       ],
 
       balanceLogs: [
-        { id: 'LOG-01', time: '2026-08-12 09:00:00', merchantName: '閃電電商', type: '手動充值', beforeBal: 108200, changeAmt: 50000, afterBal: 158200, reason: '線上轉帳充值' }
+        { id: 'LOG-01', time: '2026-08-13 09:00:00', merchantName: '閃電電商', type: '手動充值', beforeBal: 108200, changeAmt: 50000, afterBal: 158200, reason: '線上轉帳充值' }
       ]
     }
   },
   computed: {
+    isSupplierQueryMenu() { return this.activeMenu.startsWith('sup_'); },
+    isCollectQueryMenu() { return this.activeMenu.startsWith('collect_'); },
+    isPayoutQueryMenu() { return this.activeMenu.startsWith('payout_'); },
     isSettlementMenu() { return this.activeMenu.startsWith('settlement_'); },
+
+    activeSupplierList() {
+      return this.isPayoutMenu(this.activeMenu) ? this.supPayoutList : this.supCollectList;
+    },
+
     currentSettlementTitle() {
       const titles = {
         settlement_channel_total: '渠道總跑量',
@@ -547,6 +609,23 @@ const app = createApp({
       if (!parentItem.children) return false;
       return parentItem.children.some(child => child.key === this.activeMenu);
     },
+    isPayoutMenu(key) {
+      return key.includes('payout');
+    },
+    getMenuTitle(key) {
+      const map = {
+        sup_collect: '供應商代收訂單',
+        sup_collect_exact: '供應商代收訂單 (精準)',
+        sup_payout: '供應商代付訂單',
+        sup_payout_exact: '供應商代付訂單 (精準)',
+        collect_orders: '代收訂單查詢',
+        collect_exact: '代收訂單 (精準)',
+        payout_orders: '代付訂單查詢',
+        payout_exact: '代付訂單 (精準)'
+      };
+      return map[key] || '訂單查詢';
+    },
+
     openAddMerchantModal() {
       const defaultId = `MCH-${1000 + this.merchants.length + 1}`;
       this.newMerchant = {
@@ -557,6 +636,7 @@ const app = createApp({
         payoutFeeRate: 0.5,
         minLimit: 100,
         maxLimit: 50000,
+        settleMode: 'D0',
         connectedChannels: ['微信支付直連', '支付寶原生'],
         active: true
       };
@@ -566,23 +646,31 @@ const app = createApp({
       if (!this.newMerchant.id) return alert('請輸入商戶號！');
       if (!this.newMerchant.name) return alert('請輸入商戶名稱！');
 
-      this.merchants.push({
-        id: this.newMerchant.id,
-        name: this.newMerchant.name,
-        rawBalance: 0,
-        collectFeeRate: Number(this.newMerchant.collectFeeRate) || 0,
-        payoutFeeRate: Number(this.newMerchant.payoutFeeRate) || 0,
-        minLimit: Number(this.newMerchant.minLimit) || 100,
-        maxLimit: Number(this.newMerchant.maxLimit) || 50000,
-        connectedChannels: [...this.newMerchant.connectedChannels],
-        active: this.newMerchant.active
-      });
-
+      this.merchants.push({ ...this.newMerchant, rawBalance: 0 });
       alert(`商戶 [${this.newMerchant.name}] (${this.newMerchant.id}) 新增成功！`);
       this.showAddMerchantModal = false;
     },
+
+    openConfigModal(m) {
+      // 複製一份資料進行編輯
+      this.editingMerchant = JSON.parse(JSON.stringify(m));
+      this.showConfigModal = true;
+    },
+    saveMerchantConfig() {
+      const idx = this.merchants.findIndex(m => m.id === this.editingMerchant.id);
+      if (idx !== -1) {
+        this.merchants[idx] = { ...this.editingMerchant };
+        alert(`商戶 [${this.editingMerchant.name}] 配置儲存成功！`);
+      }
+      this.showConfigModal = false;
+    },
+
     handleExactSearch(type) {
-      alert(`[${type}] 精準檢索條件：\n商戶單號：${this.searchQuery.mchNo || '無'}\n系統單號：${this.searchQuery.sysNo || '無'}\n供應商單號：${this.searchQuery.supNo || '無'}`);
+      alert(`[${type}] 查詢條件：\n` +
+            `商戶號: ${this.searchQuery.mchNo || '全部'}\n` +
+            `系統單號: ${this.searchQuery.sysNo || '全部'}\n` +
+            `供應商單號: ${this.searchQuery.supNo || '無'}\n` +
+            `時間類型: ${this.searchQuery.dateType === 'day' ? '按日' : '按月'} (${this.searchQuery.selectedDate})`);
     },
     saveChannelWeight(c) {
       alert(`渠道 [${c.name}] 權重已更新為：${c.weight}`);
@@ -601,7 +689,7 @@ const app = createApp({
       this.showBalanceModal = false;
     },
     exportCSV(filename) {
-      alert(`已成導出 CSV 檔案：${filename}`);
+      alert(`已成功導出 CSV 檔案：${filename}`);
     }
   }
 })
@@ -635,8 +723,8 @@ style.innerHTML = `
   .card-title { color: #8c8c8c; font-size: 13px; }
   .card-value { font-size: 24px; font-weight: bold; margin-top: 6px; }
   
-  .search-box-group { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
-  .search-box-group .input-control { width: 220px; }
+  .search-box-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .search-box-group .input-control { width: 160px; }
 
   .data-table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 10px; }
   .data-table th { background: #f7fafc; border-bottom: 2px solid #edf2f7; padding: 12px; font-size: 14px; color: #4a5568; }
