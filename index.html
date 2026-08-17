@@ -1,13 +1,77 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="https://element-plus.org/images/element-plus-logo-small.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>电子商务管理系统</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/main.js"></script>
-  </body>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BCPay 聚合支付管理系統</title>
+  
+  <!-- 1. 載入 Element Plus 樣式表 -->
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+
+  <!-- 2. 加入基礎佈局 CSS -->
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f0f2f5; color: #333; }
+    
+    .layout-container { display: flex; min-height: 100vh; }
+    
+    /* 左側選單欄樣式 */
+    .sidebar { width: 240px; background-color: #001529; color: #fff; display: flex; flex-direction: column; justify-content: space-between; flex-shrink: 0; padding: 16px 0; }
+    .sidebar-logo { font-size: 18px; font-weight: bold; padding: 0 16px 16px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); color: #fff; }
+    .sidebar-menu { margin-top: 10px; }
+    .menu-item { padding: 12px 20px; cursor: pointer; transition: background 0.2s; color: rgba(255,255,255,0.7); font-size: 14px; }
+    .menu-item:hover, .menu-item.active { background-color: #1890ff; color: #fff; }
+    .menu-parent { display: flex; justify-content: space-between; align-items: center; }
+    .submenu-container { background-color: #000c17; }
+    .submenu-item { padding: 10px 10px 10px 32px; font-size: 13px; color: rgba(255,255,255,0.65); cursor: pointer; }
+    .submenu-item:hover, .submenu-item.active { color: #fff; background-color: #1890ff; }
+    .arrow-icon { font-size: 10px; transition: transform 0.2s; }
+    .arrow-icon.open { transform: rotate(180deg); }
+    .sidebar-footer { padding: 16px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 12px; color: rgba(255,255,255,0.45); }
+
+    /* 右側內容區樣式 */
+    .main-content { flex: 1; padding: 24px; overflow-y: auto; }
+    .card { background: #fff; border-radius: 8px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .card-title { font-size: 13px; color: #8c8c8c; margin-bottom: 8px; }
+    .card-value { font-size: 24px; font-weight: bold; }
+
+    /* 表格樣式 */
+    .data-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    .data-table th, .data-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+    .data-table th { background-color: #fafafa; font-weight: 600; color: #595959; }
+
+    /* 按鈕與標籤 */
+    .btn { padding: 6px 14px; border-radius: 4px; border: 1px solid #d9d9d9; background: #fff; cursor: pointer; font-size: 14px; transition: 0.2s; }
+    .btn-primary { background: #1890ff; color: #fff; border-color: #1890ff; }
+    .btn-success { background: #52c41a; color: #fff; border-color: #52c41a; }
+    .btn-warning { background: #fa8c16; color: #fff; border-color: #fa8c16; }
+    .btn-danger { background: #ff4d4f; color: #fff; border-color: #ff4d4f; }
+    .input-control { padding: 6px 11px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 14px; outline: none; }
+    .input-control:focus { border-color: #40a9ff; }
+
+    /* 狀態標籤 */
+    .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .status-success { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+    .status-disabled { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+    .tag { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+    /* 彈窗 Modal */
+    .modal-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.45); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+    .modal-box { background: #fff; border-radius: 8px; width: 420px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-size: 14px; }
+    .search-box-group { display: flex; gap: 10px; flex-wrap: wrap; }
+  </style>
+
+  <!-- 3. 載入 Vue 3 & Element Plus JS -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- 載入主程式 -->
+  <script type="module" src="./main.js"></script>
+</body>
 </html>
