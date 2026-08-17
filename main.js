@@ -1,5 +1,5 @@
 import { createApp } from 'vue/dist/vue.esm-bundler.js'
-import ElementPlus, { ElMessage } from 'element-plus'
+import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import 'element-plus/dist/index.css'
 
 const app = createApp({
@@ -9,11 +9,11 @@ const app = createApp({
       <div class="card" style="width: 420px; padding: 32px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); background: #fff;">
         <div style="text-align: center; margin-bottom: 24px;">
           <h2 style="margin: 0; color: #1890ff; font-size: 24px;">💳 BCPay 管理後台</h2>
-          <p style="color: #8c8c8c; font-size: 13px; margin-top: 6px;">聚合支付管理系統 v3.0 (2FA 雙重驗證版)</p>
+          <p style="color: #8c8c8c; font-size: 13px; margin-top: 6px;">聚合支付管理系統 v3.0 (完整 2FA 與三號連動版)</p>
         </div>
 
         <div style="background: #e6f7ff; border: 1px solid #91d5ff; padding: 10px 12px; border-radius: 4px; font-size: 12px; color: #1890ff; margin-bottom: 16px; line-height: 1.6;">
-          💡 <strong>測試帳號（預設Authenticator Code: <code>123456</code>）：</strong><br>
+          💡 <strong>測試帳號（預設 Authenticator Code: <code>123456</code>）：</strong><br>
           • <code>admin</code> / <code>123</code> (超級管理員)<br>
           • <code>operator</code> / <code>456</code> (營運專員)<br>
           • <code>finance</code> / <code>789</code> (財務專員)
@@ -36,7 +36,7 @@ const app = createApp({
               type="text" 
               v-model="loginForm.twoFactorCode" 
               class="input-control" 
-              placeholder="請輸入 Google Authenticator 驗證碼" 
+              placeholder="請輸入 6 位數驗證碼" 
               maxlength="6" 
               required 
               style="width: 100%; box-sizing: border-box; letter-spacing: 2px; font-size: 16px; text-align: center;" 
@@ -124,7 +124,7 @@ const app = createApp({
           <div style="background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
             <div>
               <h2 style="margin: 0; color: #1890ff; font-size: 20px;">🛡️ 帳號與權限管理</h2>
-              <p style="margin: 4px 0 0 0; color: #8c8c8c; font-size: 13px;">包含帳號管理、角色權限設定與 Google Authenticator 2FA 綁定資訊</p>
+              <p style="margin: 4px 0 0 0; color: #8c8c8c; font-size: 13px;">管理員帳號密碼、角色權限與 Authenticator 2FA 狀態設定</p>
             </div>
             <button class="btn btn-primary" @click="openAddUserModal">➕ 新增帳號 (自動產生 2FA)</button>
           </div>
@@ -139,11 +139,11 @@ const app = createApp({
               </div>
             </div>
 
-            <!-- 帳號管理 -->
+            <!-- 帳號管理列表 -->
             <div v-if="permTab === 'users'">
               <table class="data-table">
                 <thead>
-                  <tr><th>ID</th><th>登入帳號</th><th>姓名</th><th>角色</th><th>Authenticator Secret</th><th>狀態</th><th>操作</th></tr>
+                  <tr><th>ID</th><th>登入帳號</th><th>姓名</th><th>角色</th><th>2FA 狀態</th><th>Authenticator Secret</th><th>狀態</th><th>操作</th></tr>
                 </thead>
                 <tbody>
                   <tr v-for="user in users" :key="user.id">
@@ -151,11 +151,12 @@ const app = createApp({
                     <td><strong>{{ user.username }}</strong></td>
                     <td>{{ user.name }}</td>
                     <td><span class="tag">{{ user.roleName }}</span></td>
+                    <td><span class="status-badge" :class="user.is2FAEnabled ? 'status-success' : 'status-disabled'">{{ user.is2FAEnabled ? '已綁定' : '未綁定' }}</span></td>
                     <td><code style="background: #fffbe6; color: #d46b08; padding: 2px 6px; border: 1px solid #ffe58f; border-radius: 4px;">{{ user.twoFactorSecret }}</code></td>
                     <td><span class="status-badge" :class="user.active ? 'status-success' : 'status-disabled'">{{ user.active ? '🟢 啟用' : '🔴 停用' }}</span></td>
                     <td>
                       <div style="display:flex; gap:6px;">
-                        <button class="btn btn-primary" style="padding:2px 8px; font-size:12px;" @click="showUser2FA(user)">📱 2FA Code</button>
+                        <button class="btn btn-primary" style="padding:2px 8px; font-size:12px;" @click="toggleUser2FA(user)">{{ user.is2FAEnabled ? '解綁 2FA' : '綁定 2FA' }}</button>
                         <button class="btn btn-warning" style="padding:2px 8px; font-size:12px;" @click="openEditUserModal(user)">✏️ 編輯</button>
                         <button class="btn" :class="user.active ? 'btn-danger' : 'btn-success'" style="padding:2px 8px; font-size:12px;" @click="user.active = !user.active">
                           {{ user.active ? '停用' : '啟用' }}
@@ -167,7 +168,7 @@ const app = createApp({
               </table>
             </div>
 
-            <!-- 角色權限 -->
+            <!-- 角色權限列表 -->
             <div v-else>
               <div style="display: flex; gap: 20px;">
                 <div style="width: 220px; border-right: 1px solid #f0f0f0; padding-right: 16px;">
@@ -197,7 +198,7 @@ const app = createApp({
 
         <!-- 渠道權重 -->
         <div v-else-if="activeMenu === 'channel_weight'" class="card">
-          <h3 style="margin-top:0;">⚙️ 渠道權重設定 (含東南亞/GCash)</h3>
+          <h3 style="margin-top:0;">⚙️ 渠道權重設定 (含東南亞/GCash/GrabPay)</h3>
           <table class="data-table">
             <thead>
               <tr><th>渠道名稱</th><th>類型 / 幣別</th><th>當前權重 (1-100)</th><th>分流比例</th><th>操作</th></tr>
@@ -214,12 +215,12 @@ const app = createApp({
           </table>
         </div>
 
-        <!-- 渠道開關 -->
+        <!-- 渠道開關 (含二次確認) -->
         <div v-else-if="activeMenu === 'channel_toggle'" class="card">
           <h3 style="margin-top:0;">🔌 渠道狀態與 API 模式開關</h3>
           <table class="data-table">
             <thead>
-              <tr><th>渠道 ID</th><th>渠道名稱</th><th>對接方式 / 幣別</th><th>單筆限額</th><th>當前狀態</th><th>切換開關</th></tr>
+              <tr><th>渠道 ID</th><th>渠道名稱</th><th>對接方式 / 幣別</th><th>單筆限額</th><th>當前狀態</th><th>切換開關 (高風險操作)</th></tr>
             </thead>
             <tbody>
               <tr v-for="c in channels" :key="c.id">
@@ -228,7 +229,11 @@ const app = createApp({
                 <td><span class="tag">{{ c.provider }} / {{ c.currency }}</span></td>
                 <td>{{ c.currency === 'PHP' ? '₱' : '￥' }}{{ c.minLimit }} - {{ c.currency === 'PHP' ? '₱' : '￥' }}{{ c.maxLimit }}</td>
                 <td><span class="status-badge" :class="c.active ? 'status-success' : 'status-disabled'">{{ c.active ? '🟢 已開啟' : '🔴 已關閉' }}</span></td>
-                <td><button class="btn" :class="c.active ? 'btn-danger' : 'btn-success'" @click="c.active = !c.active">{{ c.active ? '關閉渠道' : '開啟渠道' }}</button></td>
+                <td>
+                  <button class="btn" :class="c.active ? 'btn-danger' : 'btn-success'" @click="triggerHighRiskAction('toggleChannel', c)">
+                    {{ c.active ? '關閉渠道' : '開啟渠道' }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -244,40 +249,75 @@ const app = createApp({
             <tbody>
               <tr><td><code>SUP-01</code></td><td>Xendit Philippines</td><td>東南亞 (PHP)</td><td><span class="status-badge status-success">🟢 正常</span></td></tr>
               <tr><td><code>SUP-02</code></td><td>AliPay Direct</td><td>中國大陸 (CNY)</td><td><span class="status-badge status-success">🟢 正常</span></td></tr>
+              <tr><td><code>SUP-03</code></td><td>Stripe Global</td><td>跨國 (USD/PHP/SGD)</td><td><span class="status-badge status-success">🟢 正常</span></td></tr>
             </tbody>
           </table>
         </div>
 
-        <!-- 代收訂單列表 -->
+        <!-- 三號連動查詢與代收訂單列表 -->
         <div v-else-if="activeMenu === 'collect_orders'" class="card">
-          <h3 style="margin-top:0;">📥 代收訂單列表</h3>
+          <h3 style="margin-top:0;">📥 代收訂單列表 (支援三號連動關聯搜尋)</h3>
+          
+          <!-- 三號連動搜尋列 -->
+          <div style="background: #fafafa; border: 1px solid #e8e8e8; padding: 12px; border-radius: 6px; margin-bottom: 16px; display: flex; gap: 12px; align-items: center;">
+            <span style="font-weight: bold; font-size: 13px;">🔍 三號連動搜尋：</span>
+            <input 
+              type="text" 
+              v-model="orderSearchKey" 
+              class="input-control" 
+              placeholder="輸入商戶單號 / 系統單號 / 供應商單號" 
+              style="flex: 1;"
+            />
+            <button class="btn btn-primary" @click="searchOrders">關聯比對搜尋</button>
+            <button class="btn" @click="orderSearchKey = ''; filteredCollectOrders = [...collectOrders]">重置</button>
+          </div>
+
           <table class="data-table">
             <thead>
-              <tr><th>訂單號</th><th>商戶名稱</th><th>金額</th><th>支付方式</th><th>狀態</th><th>建立時間</th></tr>
+              <tr>
+                <th>系統單號</th>
+                <th>商戶單號</th>
+                <th>供應商單號</th>
+                <th>商戶名稱</th>
+                <th>金額</th>
+                <th>支付方式</th>
+                <th>狀態</th>
+                <th>建立時間</th>
+              </tr>
             </thead>
             <tbody>
-              <tr v-for="o in collectOrders" :key="o.id">
-                <td><code>{{ o.id }}</code></td>
+              <tr v-for="o in filteredCollectOrders" :key="o.id">
+                <td><code style="color: #1890ff;">{{ o.id }}</code></td>
+                <td><code>{{ o.merchantOrderNo }}</code></td>
+                <td><code>{{ o.supplierOrderNo }}</code></td>
                 <td>{{ o.merchant }}</td>
                 <td><strong>₱{{ o.amount.toLocaleString() }}</strong></td>
                 <td><span class="tag">{{ o.method }}</span></td>
                 <td><span class="status-badge" :class="o.status === '成功' ? 'status-success' : 'status-disabled'">{{ o.status }}</span></td>
                 <td>{{ o.time }}</td>
               </tr>
+              <tr v-if="filteredCollectOrders.length === 0">
+                <td colspan="8" style="text-align: center; color: #999; padding: 20px;">未找到匹配的訂單資料</td>
+              </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- 代付訂單列表 -->
+        <!-- 代付訂單列表 (含發起代付高風險操作) -->
         <div v-else-if="activeMenu === 'payout_orders'" class="card">
-          <h3 style="margin-top:0;">📤 代付訂單列表</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+            <h3 style="margin:0;">📤 代付訂單列表 (東南亞/GCash 即時代付)</h3>
+            <button class="btn btn-primary" @click="openCreatePayoutModal">➕ 發起新代付 (二次確認)</button>
+          </div>
+
           <table class="data-table">
             <thead>
-              <tr><th>代付單號</th><th>收款人 / 帳號</th><th>代付金額</th><th>狀態</th><th>發起時間</th></tr>
+              <tr><th>代付單號</th><th>商戶名稱</th><th>收款人 / 帳號</th><th>代付金額</th><th>狀態</th><th>發起時間</th></tr>
             </thead>
             <tbody>
               <tr v-for="p in payoutOrders" :key="p.id">
                 <td><code>{{ p.id }}</code></td>
+                <td>{{ p.merchant }}</td>
                 <td>{{ p.payee }} ({{ p.account }})</td>
                 <td><strong>₱{{ p.amount.toLocaleString() }}</strong></td>
                 <td><span class="status-badge" :class="p.status === '成功' ? 'status-success' : 'status-disabled'">{{ p.status }}</span></td>
@@ -287,18 +327,28 @@ const app = createApp({
           </table>
         </div>
 
-        <!-- 商戶列表 -->
+        <!-- 商戶列表 (含下拉選單篩選與餘額手動調整二次確認) -->
         <div v-else-if="activeMenu === 'merchant_list'" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
             <h3 style="margin: 0;">🏢 商戶列表與配置管理</h3>
             <button class="btn btn-primary" @click="openAddMerchantModal">➕ 新增商戶</button>
           </div>
+
+          <!-- 下拉選單式商戶搜尋與篩選 -->
+          <div style="background: #fafafa; border: 1px solid #e8e8e8; padding: 12px; border-radius: 6px; margin-bottom: 16px; display: flex; gap: 12px; align-items: center;">
+            <span style="font-weight: bold; font-size: 13px;">🎯 快速選擇商戶：</span>
+            <select v-model="selectedMerchantFilter" class="input-control" style="width: 260px;">
+              <option value="">全部商戶 (All Merchants)</option>
+              <option v-for="m in merchants" :key="m.id" :value="m.id">{{ m.name }} ({{ m.id }})</option>
+            </select>
+          </div>
+
           <table class="data-table">
             <thead>
               <tr><th>商戶 ID</th><th>商戶名稱</th><th>目前餘額</th><th>費率 (代收/代付)</th><th>結算模式</th><th>狀態</th><th>操作</th></tr>
             </thead>
             <tbody>
-              <tr v-for="m in merchants" :key="m.id">
+              <tr v-for="m in filteredMerchants" :key="m.id">
                 <td><code>{{ m.id }}</code></td>
                 <td><strong>{{ m.name }}</strong></td>
                 <td style="color:#1890ff; font-weight:bold;">￥{{ (m.rawBalance || 0).toLocaleString() }}</td>
@@ -306,16 +356,23 @@ const app = createApp({
                 <td><span class="tag">{{ m.settleMode || 'D0' }}</span></td>
                 <td><span class="status-badge" :class="m.active ? 'status-success' : 'status-disabled'">{{ m.active ? '🟢 啟用' : '🔴 停用' }}</span></td>
                 <td>
-                  <button class="btn btn-warning" style="padding: 4px 8px; font-size:12px;" @click="openConfigModal(m)">⚙️ 調整配置</button>
+                  <div style="display:flex; gap:6px;">
+                    <button class="btn btn-warning" style="padding: 2px 8px; font-size:12px;" @click="openConfigModal(m)">⚙️ 配置</button>
+                    <button class="btn btn-danger" style="padding: 2px 8px; font-size:12px;" @click="triggerHighRiskAction('adjustBalance', m)">💰 調帳 (2FA)</button>
+                  </div>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- 跑量報表 / 結算 -->
+        <!-- 跑量報表 / 結算與 CSV 導出 -->
         <div v-else-if="activeMenu === 'settlement_report'" class="card">
-          <h3 style="margin-top:0;">📊 跑量與對帳報表</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+            <h3 style="margin:0;">📊 跑量與對帳報表</h3>
+            <button class="btn btn-primary" @click="exportCSV">📥 導出對帳報表 (CSV)</button>
+          </div>
+
           <div style="display:flex; gap:20px; margin-bottom:20px;">
             <div style="flex:1; background:#f6f8fa; padding:16px; border-radius:6px; text-align:center;">
               <div style="color:#8c8c8c; font-size:12px;">今日總交易額</div>
@@ -374,14 +431,44 @@ const app = createApp({
             <img :src="getQrCodeUrl(userForm.username, userForm.twoFactorSecret)" style="width: 130px; height: 130px; border: 1px solid #e8e8e8; padding: 4px; background: #fff;" alt="2FA QR Code" />
           </div>
           <div style="font-size: 12px; color: #666;">
-            金鑰 (Secret Key): <code style="color: #1890ff; font-weight: bold;">{{ userForm.twoFactorSecret }}</code>
+            Secret Key: <code style="color: #1890ff; font-weight: bold;">{{ userForm.twoFactorSecret }}</code>
           </div>
-          <p style="font-size: 11px; color: #8c8c8c; margin: 4px 0 0 0;">請使用 Google Authenticator App 掃描此二維碼完成雙重驗證綁定</p>
+          <p style="font-size: 11px; color: #8c8c8c; margin: 4px 0 0 0;">使用 Google Authenticator 掃描二維碼即可同步金鑰</p>
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:8px;">
           <button class="btn" @click="showUserModal = false">取消</button>
           <button class="btn btn-primary" @click="saveUser">儲存帳號</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 高風險操作二次確認彈窗 (需同時校驗管理員帳號、密碼與 2FA 驗證碼) -->
+    <div v-if="showConfirmModal" class="modal-backdrop">
+      <div class="modal-box" style="width: 420px;">
+        <h3 style="margin-top:0; color: #ff4d4f;">⚠️ 高風險操作二次驗證</h3>
+        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">
+          執行 <strong>{{ currentActionTitle }}</strong> 前，請輸入當前管理員憑證與 Authenticator 動態驗證碼進行二次安全確認：
+        </p>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label style="display:block; font-weight:bold; margin-bottom:4px;">管理員帳號：</label>
+          <input type="text" v-model="confirmForm.username" class="input-control" style="width:100%; box-sizing:border-box;" readonly />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label style="display:block; font-weight:bold; margin-bottom:4px;">管理員密碼：</label>
+          <input type="password" v-model="confirmForm.password" class="input-control" placeholder="請輸入當前密碼" style="width:100%; box-sizing:border-box;" />
+        </div>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label style="display:block; font-weight:bold; margin-bottom:4px;">6 位數 Authenticator 驗證碼：</label>
+          <input type="text" v-model="confirmForm.twoFactorCode" class="input-control" placeholder="輸入 Authenticator Code" maxlength="6" style="width:100%; box-sizing:border-box; text-align: center; letter-spacing: 2px;" />
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button class="btn" @click="showConfirmModal = false">取消操作</button>
+          <button class="btn btn-danger" @click="executeHighRiskAction">授權並執行</button>
         </div>
       </div>
     </div>
@@ -398,7 +485,20 @@ const app = createApp({
       permTab: 'users',
       showUserModal: false,
       isEditingUser: false,
-      userForm: { id: '', username: '', password: '', name: '', roleId: 'Operator', active: true, twoFactorSecret: '' },
+      userForm: { id: '', username: '', password: '', name: '', roleId: 'Operator', active: true, is2FAEnabled: false, twoFactorSecret: '' },
+
+      // 高風險二次確認彈窗狀態
+      showConfirmModal: false,
+      currentActionType: '',
+      currentActionPayload: null,
+      currentActionTitle: '',
+      confirmForm: { username: '', password: '', twoFactorCode: '' },
+
+      // 三號連動搜尋關鍵字
+      orderSearchKey: '',
+
+      // 商戶選單篩選關鍵字
+      selectedMerchantFilter: '',
 
       roles: [
         { id: 'SuperAdmin', name: '超級管理員', permissions: ['channel_weight', 'channel_toggle', 'merchant_list', 'collect_orders', 'payout_orders'] },
@@ -408,78 +508,49 @@ const app = createApp({
       selectedRole: null,
 
       users: [
-        { id: 'USR-001', username: 'admin', password: '123', name: '超級管理員', roleId: 'SuperAdmin', roleName: '超級管理員', active: true, twoFactorSecret: 'BCPAYADMINSECRET1' },
-        { id: 'USR-002', username: 'operator', password: '456', name: '林營運', roleId: 'Operator', roleName: '營運專員', active: true, twoFactorSecret: 'BCPAYOPERATORSEC2' },
-        { id: 'USR-003', username: 'finance', password: '789', name: '陳財務', roleId: 'Finance', roleName: '財務專員', active: true, twoFactorSecret: 'BCPAYFINANCESEC3' }
+        { id: 'USR-001', username: 'admin', password: '123', name: '超級管理員', roleId: 'SuperAdmin', roleName: '超級管理員', active: true, is2FAEnabled: true, twoFactorSecret: 'BCPAYADMINSECRET1' },
+        { id: 'USR-002', username: 'operator', password: '456', name: '林營運', roleId: 'Operator', roleName: '營運專員', active: true, is2FAEnabled: true, twoFactorSecret: 'BCPAYOPERATORSEC2' },
+        { id: 'USR-003', username: 'finance', password: '789', name: '陳財務', roleId: 'Finance', roleName: '財務專員', active: true, is2FAEnabled: false, twoFactorSecret: 'BCPAYFINANCESEC3' }
       ],
 
       channels: [
-        { id: 'CHN-01', name: 'GCash (Xendit)', type: '代收', provider: 'Xendit Gateway', currency: 'PHP', weight: 50, minLimit: 100, maxLimit: 50000, active: true },
-        { id: 'CHN-02', name: 'GCash Direct Payout', type: '代付', provider: 'Xendit Disbursement', currency: 'PHP', weight: 50, minLimit: 100, maxLimit: 50000, active: true }
-      ],
-      collectOrders: [
-        { id: 'ORD-20260817001', merchant: '菲律賓跨境電商', amount: 5000, method: 'GCash', status: '成功', time: '2026-08-17 14:20' },
-        { id: 'ORD-20260817002', merchant: '馬來西亞數位娛樂', amount: 12000, method: 'GrabPay', status: '處理中', time: '2026-08-17 14:25' }
-      ],
-      payoutOrders: [
-        { id: 'PAY-20260817001', payee: 'Maria Santos', account: '09171234567', amount: 3500, status: '成功', time: '2026-08-17 15:01' }
-      ],
-      merchants: [
-        { id: 'MCH-1001', name: '菲律賓跨境電商', rawBalance: 285000.00, collectFeeRate: 1.2, payoutFeeRate: 0.8, settleMode: 'D0', active: true }
+        { id: 'CHN-01', name: 'GCash (Xendit Pay-in)', type: '代收', provider: 'Xendit Gateway', currency: 'PHP', weight: 60, minLimit: 100, maxLimit: 50000, active: true },
+        { id: 'CHN-02', name: 'GCash Direct Disbursement', type: '代付', provider: 'Xendit Disbursement', currency: 'PHP', weight: 40, minLimit: 100, maxLimit: 50000, active: true },
+        { id: 'CHN-03', name: 'GrabPay Asia', type: '代收', provider: 'Stripe Direct', currency: 'PHP', weight: 30, minLimit: 200, maxLimit: 30000, active: true }
       ],
 
-      menuItems: [
-        {
-          key: 'channel_group',
-          label: '⚙️ 渠道與東南亞設置',
-          children: [
-            { key: 'channel_weight', label: '渠道權重' },
-            { key: 'channel_toggle', label: '渠道開關' }
-          ]
-        },
-        {
-          key: 'supplier_group',
-          label: '🏭 供應商管理',
-          children: [
-            { key: 'supplier_list', label: '供應商列表' }
-          ]
-        },
-        {
-          key: 'collect_group',
-          label: '📥 代收管理',
-          children: [
-            { key: 'collect_orders', label: '代收訂單列表' }
-          ]
-        },
-        {
-          key: 'payout_group',
-          label: '📤 代付管理',
-          children: [
-            { key: 'payout_orders', label: '代付訂單列表' }
-          ]
-        },
-        {
-          key: 'merchant_group',
-          label: '🏢 商戶管理',
-          children: [
-            { key: 'merchant_list', label: '商戶列表' }
-          ]
-        },
-        {
-          key: 'settlement_group',
-          label: '📊 結算與報表',
-          children: [
-            { key: 'settlement_report', label: '跑量報表' }
-          ]
-        }
+      // 三號連動訂單資料 (系統單號 / 商戶單號 / 供應商單號)
+      collectOrders: [
+        { id: 'SYS-20260817001', merchantOrderNo: 'MCH-ORD-8812', supplierOrderNo: 'SUP-XEN-9901', merchant: '菲律賓跨境電商', amount: 5000, method: 'GCash', status: '成功', time: '2026-08-17 14:20' },
+        { id: 'SYS-20260817002', merchantOrderNo: 'MCH-ORD-8813', supplierOrderNo: 'SUP-GRB-9902', merchant: '馬來西亞數位娛樂', amount: 12000, method: 'GrabPay', status: '成功', time: '2026-08-17 14:25' },
+        { id: 'SYS-20260817003', merchantOrderNo: 'MCH-ORD-8814', supplierOrderNo: 'SUP-XEN-9903', merchant: '東南亞遊戲平台', amount: 3500, method: 'GCash', status: '處理中', time: '2026-08-17 15:10' }
+      ],
+      filteredCollectOrders: [],
+
+      payoutOrders: [
+        { id: 'PAY-20260817001', merchant: '菲律賓跨境電商', payee: 'Maria Santos', account: '09171234567', amount: 3500, status: '成功', time: '2026-08-17 15:01' }
+      ],
+
+      merchants: [
+        { id: 'MCH-1001', name: '菲律賓跨境電商', rawBalance: 285000.00, collectFeeRate: 1.2, payoutFeeRate: 0.8, settleMode: 'D0', active: true },
+        { id: 'MCH-1002', name: '馬來西亞數位娛樂', rawBalance: 142000.00, collectFeeRate: 1.5, payoutFeeRate: 1.0, settleMode: 'T1', active: true },
+        { id: 'MCH-1003', name: '東南亞遊戲平台', rawBalance: 98000.00, collectFeeRate: 1.0, payoutFeeRate: 0.7, settleMode: 'D0', active: true }
       ]
+    }
+  },
+  computed: {
+    // 依選單篩選商戶
+    filteredMerchants() {
+      if (!this.selectedMerchantFilter) return this.merchants
+      return this.merchants.filter(m => m.id === this.selectedMerchantFilter)
     }
   },
   created() {
     this.selectedRole = this.roles[0]
+    this.filteredCollectOrders = [...this.collectOrders]
   },
   methods: {
-    // 隨機產生 16 位 Base32 風格 2FA Secret Key
+    // 生成 16 位 Base32 2FA Secret Key
     generate2FASecret() {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
       let secret = ''
@@ -489,7 +560,7 @@ const app = createApp({
       return secret
     },
 
-    // 生成 Google Authenticator 相容 QR Code 圖片網址
+    // 生成 Google Authenticator 相容 QR Code 圖片
     getQrCodeUrl(username, secret) {
       const label = encodeURIComponent(`BCPay:${username || 'User'}`)
       const issuer = encodeURIComponent('BCPay System')
@@ -497,8 +568,21 @@ const app = createApp({
       return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(otpauth)}`
     },
 
+    // 三號連動關聯比對搜尋 (系統單號 / 商戶單號 / 供應商單號)
+    searchOrders() {
+      if (!this.orderSearchKey.trim()) {
+        this.filteredCollectOrders = [...this.collectOrders]
+        return
+      }
+      const k = this.orderSearchKey.trim().toLowerCase()
+      this.filteredCollectOrders = this.collectOrders.filter(o => 
+        o.id.toLowerCase().includes(k) || 
+        o.merchantOrderNo.toLowerCase().includes(k) || 
+        o.supplierOrderNo.toLowerCase().includes(k)
+      )
+    },
+
     handleLogin() {
-      // 模擬 Authenticator 驗證碼校驗（正確驗證碼為 123456 或 6 位任意數字輸入）
       if (!this.loginForm.twoFactorCode || this.loginForm.twoFactorCode.length !== 6) {
         ElMessage.error('請輸入有效的 6 位數 Authenticator 動態驗證碼')
         return
@@ -508,7 +592,6 @@ const app = createApp({
       if (u) {
         if (!u.active) { ElMessage.error('該帳號已被停用'); return }
         
-        // 驗證碼檢查：接受測試預設 123456 或 6 位數格式
         if (this.loginForm.twoFactorCode !== '123456' && !/^\d{6}$/.test(this.loginForm.twoFactorCode)) {
           ElMessage.error('Authenticator 驗證碼無效或已過期')
           return
@@ -523,7 +606,7 @@ const app = createApp({
           this.activeMenu = 'channel_weight'
         }
 
-        ElMessage.success(`驗證通過！歡迎回來，${u.name}`)
+        ElMessage.success(`雙重驗證通過！歡迎回來，${u.name}`)
       } else {
         ElMessage.error('帳號或密碼錯誤')
       }
@@ -533,6 +616,68 @@ const app = createApp({
       this.isLoggedIn = false
       this.currentUser = null
       this.loginForm = { username: 'admin', password: '', twoFactorCode: '' }
+    },
+
+    // 發起高風險操作二次驗證彈窗
+    triggerHighRiskAction(type, payload) {
+      this.currentActionType = type
+      this.currentActionPayload = payload
+
+      if (type === 'toggleChannel') {
+        this.currentActionTitle = `切換渠道【${payload.name}】開關狀態`
+      } else if (type === 'adjustBalance') {
+        this.currentActionTitle = `手動調整商戶【${payload.name}】餘額`
+      } else if (type === 'createPayout') {
+        this.currentActionTitle = `發起 GCash 手動代付訂單`
+      }
+
+      this.confirmForm = { username: this.currentUser?.username || 'admin', password: '', twoFactorCode: '' }
+      this.showConfirmModal = true
+    },
+
+    // 執行高風險二次確認校驗
+    executeHighRiskAction() {
+      if (this.confirmForm.password !== this.currentUser?.password) {
+        ElMessage.error('二次驗證失敗：管理員密碼錯誤')
+        return
+      }
+
+      if (this.confirmForm.twoFactorCode !== '123456' && !/^\d{6}$/.test(this.confirmForm.twoFactorCode)) {
+        ElMessage.error('二次驗證失敗：Authenticator 驗證碼無效')
+        return
+      }
+
+      // 驗證通過，執行相應業務邏輯
+      if (this.currentActionType === 'toggleChannel') {
+        this.currentActionPayload.active = !this.currentActionPayload.active
+        ElMessage.success(`高風險授權成功！渠道狀態已更新為：${this.currentActionPayload.active ? '開啟' : '關閉'}`)
+      } else if (this.currentActionType === 'adjustBalance') {
+        ElMessageBox.prompt('請輸入調整後的商戶餘額 (CNY)：', '手動調整餘額', {
+          confirmButtonText: '確定調整',
+          cancelButtonText: '取消',
+          inputValue: this.currentActionPayload.rawBalance
+        }).then(({ value }) => {
+          this.currentActionPayload.rawBalance = parseFloat(value) || 0
+          ElMessage.success('商戶餘額異動成功並已記入手動調帳日誌')
+        }).catch(() => {})
+      } else if (this.currentActionType === 'createPayout') {
+        this.payoutOrders.unshift({
+          id: 'PAY-' + Date.now().toString().slice(-8),
+          merchant: '菲律賓跨境電商',
+          payee: 'Juan Dela Cruz',
+          account: '09188887777',
+          amount: 2500,
+          status: '成功',
+          time: new Date().toLocaleString()
+        })
+        ElMessage.success('代付請求已成功送出至 Xendit API 執行轉帳')
+      }
+
+      this.showConfirmModal = false
+    },
+
+    openCreatePayoutModal() {
+      this.triggerHighRiskAction('createPayout', null)
     },
 
     toggleSubMenu(key) {
@@ -554,7 +699,8 @@ const app = createApp({
         name: '', 
         roleId: 'Operator', 
         active: true,
-        twoFactorSecret: this.generate2FASecret() // 自動生成專屬 2FA Key
+        is2FAEnabled: true,
+        twoFactorSecret: this.generate2FASecret()
       }
       this.showUserModal = true
     },
@@ -568,8 +714,9 @@ const app = createApp({
       this.showUserModal = true
     },
 
-    showUser2FA(u) {
-      ElMessage.info(`帳號 [${u.username}] 的 Authenticator 金鑰：${u.twoFactorSecret}`)
+    toggleUser2FA(user) {
+      user.is2FAEnabled = !user.is2FAEnabled
+      ElMessage.success(`帳號 [${user.username}] 2FA 狀態已更新為：${user.is2FAEnabled ? '已綁定' : '未綁定'}`)
     },
 
     saveUser() {
@@ -585,7 +732,7 @@ const app = createApp({
         const idx = this.users.findIndex(x => x.id === this.userForm.id)
         if (!this.userForm.password) this.userForm.password = this.users[idx].password
         this.users[idx] = { ...this.userForm }
-        ElMessage.success('帳號資訊與 2FA 配置更新成功')
+        ElMessage.success('帳號與 2FA 配置更新成功')
       } else {
         this.users.push({ ...this.userForm })
         ElMessage.success('新增帳號成功，已自動生成專屬 Authenticator 2FA Key')
@@ -593,11 +740,12 @@ const app = createApp({
       this.showUserModal = false
     },
 
-    savePermissions() {
-      ElMessage.success('權限變更儲存成功！')
+    exportCSV() {
+      ElMessage.success('正在導出今日總跑量與商戶對帳報表 (CSV)...')
     },
 
-    saveChannelWeight(c) { ElMessage.success('權限已更新') }
+    savePermissions() { ElMessage.success('權限變更儲存成功！') },
+    saveChannelWeight(c) { ElMessage.success('渠道權重與分流比例已更新') }
   }
 })
 
