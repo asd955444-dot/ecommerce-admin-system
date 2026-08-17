@@ -8,7 +8,7 @@ const app = createApp({
       <!-- 左側選單欄 -->
       <div class="sidebar">
         <div>
-          <div class="sidebar-logo">💳 BCPay 管理系統</div>
+          <div class="sidebar-logo">💳 BCPay 聚合支付系統</div>
           <div class="sidebar-menu">
             <template v-for="item in menuItems" :key="item.key">
               
@@ -49,7 +49,7 @@ const app = createApp({
             </template>
           </div>
         </div>
-        <div class="sidebar-footer">v2.7.0 Build 2026</div>
+        <div class="sidebar-footer">v2.8.0 (支援 GCash/東南亞跨境)</div>
       </div>
 
       <!-- 主內容區 -->
@@ -57,14 +57,15 @@ const app = createApp({
         
         <!-- 1-1. 渠道權重 -->
         <div v-if="activeMenu === 'channel_weight'" class="card">
-          <h3 style="margin-top:0;">⚙️ 渠道權重設定</h3>
+          <h3 style="margin-top:0;">⚙️ 渠道權重設定 (含東南亞/GCash)</h3>
           <table class="data-table">
             <thead>
-              <tr><th>渠道名稱</th><th>當前權重 (1-100)</th><th>分流比例</th><th>操作</th></tr>
+              <tr><th>渠道名稱</th><th>類型 / 幣別</th><th>當前權重 (1-100)</th><th>分流比例</th><th>操作</th></tr>
             </thead>
             <tbody>
               <tr v-for="c in channels" :key="c.id">
                 <td><strong>{{ c.name }}</strong></td>
+                <td><span class="tag">{{ c.type }} ({{ c.currency }})</span></td>
                 <td><input type="number" v-model.number="c.weight" class="input-control" style="width:80px;" /></td>
                 <td><span class="tag">{{ c.weight }}%</span></td>
                 <td><button class="btn btn-primary" @click="saveChannelWeight(c)">儲存權重</button></td>
@@ -75,17 +76,17 @@ const app = createApp({
 
         <!-- 1-2. 渠道開關 -->
         <div v-if="activeMenu === 'channel_toggle'" class="card">
-          <h3 style="margin-top:0;">🔌 渠道狀態開關</h3>
+          <h3 style="margin-top:0;">🔌 渠道狀態與 API 模式開關</h3>
           <table class="data-table">
             <thead>
-              <tr><th>渠道 ID</th><th>渠道名稱</th><th>類型</th><th>單筆限額</th><th>當前狀態</th><th>切換開關</th></tr>
+              <tr><th>渠道 ID</th><th>渠道名稱</th><th>對接方式 / 幣別</th><th>單筆限額</th><th>當前狀態</th><th>切換開關</th></tr>
             </thead>
             <tbody>
               <tr v-for="c in channels" :key="c.id">
                 <td><code>{{ c.id }}</code></td>
                 <td><strong>{{ c.name }}</strong></td>
-                <td><span class="tag">{{ c.type }}</span></td>
-                <td>￥{{ c.minLimit }} - ￥{{ c.maxLimit }}</td>
+                <td><span class="tag">{{ c.provider }} / {{ c.currency }}</span></td>
+                <td>{{ c.currency === 'PHP' ? '₱' : '￥' }}{{ c.minLimit }} - {{ c.currency === 'PHP' ? '₱' : '￥' }}{{ c.maxLimit }}</td>
                 <td>
                   <span class="status-badge" :class="c.active ? 'status-success' : 'status-disabled'">
                     {{ c.active ? '🟢 已開啟' : '🔴 已關閉' }}
@@ -124,7 +125,7 @@ const app = createApp({
 
           <table class="data-table">
             <thead>
-              <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>供應商</th><th>金額</th><th>狀態</th></tr>
+              <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>供應商 / 通道</th><th>金額</th><th>狀態</th></tr>
             </thead>
             <tbody>
               <tr v-for="o in filteredSupplierList" :key="o.sysNo">
@@ -133,7 +134,7 @@ const app = createApp({
                 <td><code>{{ o.sysNo }}</code></td>
                 <td><code>{{ o.supNo }}</code></td>
                 <td>{{ o.supplier }}</td>
-                <td :style="{ color: isPayoutMenu(activeMenu) ? '#fa8c16' : '#52c41a', fontWeight: 'bold' }">￥{{ o.amount.toLocaleString() }}</td>
+                <td :style="{ color: isPayoutMenu(activeMenu) ? '#fa8c16' : '#52c41a', fontWeight: 'bold' }">{{ o.currency === 'PHP' ? '₱' : '￥' }}{{ o.amount.toLocaleString() }}</td>
                 <td><span class="status-badge status-success">{{ o.status }}</span></td>
               </tr>
               <tr v-if="filteredSupplierList.length === 0">
@@ -175,7 +176,7 @@ const app = createApp({
                 <td><code>{{ o.sysNo }}</code></td>
                 <td><code>{{ o.supNo }}</code></td>
                 <td>{{ o.merchant }}</td>
-                <td style="color:#52c41a; font-weight:bold;">￥{{ o.amount.toLocaleString() }}</td>
+                <td style="color:#52c41a; font-weight:bold;">{{ o.currency === 'PHP' ? '₱' : '￥' }}{{ o.amount.toLocaleString() }}</td>
                 <td><span class="status-badge status-success">{{ o.status }}</span></td>
               </tr>
               <tr v-if="filteredCollectList.length === 0">
@@ -185,7 +186,7 @@ const app = createApp({
           </table>
         </div>
 
-        <!-- 4. 代付訂單查詢 -->
+        <!-- 4. 代付訂單查詢 (包含 GCash 錢包出款) -->
         <div v-else-if="isPayoutQueryMenu" class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
             <h3 style="margin:0;">📤 {{ getMenuTitle(activeMenu) }}</h3>
@@ -208,7 +209,7 @@ const app = createApp({
 
           <table class="data-table">
             <thead>
-              <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>商戶</th><th>金額</th><th>狀態</th></tr>
+              <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>接收帳號 (GCash/卡號)</th><th>商戶</th><th>金額</th><th>狀態</th></tr>
             </thead>
             <tbody>
               <tr v-for="o in filteredPayoutList" :key="o.sysNo">
@@ -216,12 +217,13 @@ const app = createApp({
                 <td><code>{{ o.mchNo }}</code></td>
                 <td><code>{{ o.sysNo }}</code></td>
                 <td><code>{{ o.supNo }}</code></td>
+                <td><code>{{ o.targetAccount || '-' }}</code></td>
                 <td>{{ o.merchant }}</td>
-                <td style="color:#fa8c16; font-weight:bold;">￥{{ o.amount.toLocaleString() }}</td>
+                <td style="color:#fa8c16; font-weight:bold;">{{ o.currency === 'PHP' ? '₱' : '￥' }}{{ o.amount.toLocaleString() }}</td>
                 <td><span class="status-badge status-success">{{ o.status }}</span></td>
               </tr>
               <tr v-if="filteredPayoutList.length === 0">
-                <td colspan="7" style="text-align:center; color:#999; padding:24px;">未找到符合條件的訂單數據</td>
+                <td colspan="8" style="text-align:center; color:#999; padding:24px;">未找到符合條件的訂單數據</td>
               </tr>
             </tbody>
           </table>
@@ -292,8 +294,8 @@ const app = createApp({
 
           <div v-else>
             <div class="card-grid">
-              <div class="card"><div class="card-title">總代收跑量</div><div class="card-value" style="color:#52c41a;">￥{{ totalCollect.toLocaleString() }}</div></div>
-              <div class="card"><div class="card-title">總代付跑量</div><div class="card-value" style="color:#fa8c16;">￥{{ totalPayout.toLocaleString() }}</div></div>
+              <div class="card"><div class="card-title">總代收跑量 (CNY)</div><div class="card-value" style="color:#52c41a;">￥{{ totalCollect.toLocaleString() }}</div></div>
+              <div class="card"><div class="card-title">總代付跑量 (CNY)</div><div class="card-value" style="color:#fa8c16;">￥{{ totalPayout.toLocaleString() }}</div></div>
             </div>
             <table class="data-table">
               <thead>
@@ -412,8 +414,7 @@ const app = createApp({
       },
 
       showAddMerchantModal: false,
-      availableChannels: ['微信支付直連', '支付寶原生', '銀聯快速代付'],
-      newMerchant: { id: '', name: '', rawBalance: 0, collectFeeRate: 0.8, payoutFeeRate: 0.5, minLimit: 100, maxLimit: 50000, settleMode: 'D0', connectedChannels: ['微信支付直連'], active: true },
+      newMerchant: { id: '', name: '', rawBalance: 0, collectFeeRate: 0.8, payoutFeeRate: 0.5, minLimit: 100, maxLimit: 50000, settleMode: 'D0', connectedChannels: ['GCash (Xendit)'], active: true },
 
       showConfigModal: false,
       editingMerchant: null,
@@ -426,7 +427,7 @@ const app = createApp({
       menuItems: [
         {
           key: 'channel_group',
-          label: '⚙️ 渠道',
+          label: '⚙️ 渠道與東南亞設置',
           children: [
             { key: 'channel_weight', label: '渠道權重' },
             { key: 'channel_toggle', label: '渠道開關' }
@@ -474,48 +475,47 @@ const app = createApp({
         }
       ],
 
+      // 擴充包含 GCash 及東南亞本地錢包渠道
       channels: [
-        { id: 'CHN-01', name: '微信支付直連', type: '代收', weight: 60, minLimit: 100, maxLimit: 50000, active: true },
-        { id: 'CHN-02', name: '支付寶原生', type: '代收', weight: 40, minLimit: 100, maxLimit: 50000, active: true },
-        { id: 'CHN-03', name: '銀聯快速代付', type: '代付', weight: 100, minLimit: 500, maxLimit: 50000, active: true }
+        { id: 'CHN-01', name: 'GCash (Xendit)', type: '代收', provider: 'Xendit Gateway', currency: 'PHP', weight: 50, minLimit: 100, maxLimit: 50000, active: true },
+        { id: 'CHN-02', name: 'GCash Direct Payout', type: '代付', provider: 'Xendit Disbursement', currency: 'PHP', weight: 50, minLimit: 100, maxLimit: 50000, active: true },
+        { id: 'CHN-03', name: 'PayMaya Native', type: '代收', provider: 'Maya Direct', currency: 'PHP', weight: 30, minLimit: 100, maxLimit: 30000, active: true },
+        { id: 'CHN-04', name: '微信支付直連', type: '代收', provider: 'WeChat Pay', currency: 'CNY', weight: 60, minLimit: 100, maxLimit: 50000, active: true }
       ],
 
       merchants: [
-        { id: 'MCH-1001', name: '閃電電商', rawBalance: 158200.00, collectFeeRate: 0.8, payoutFeeRate: 0.5, minLimit: 100, maxLimit: 50000, settleMode: 'D0', connectedChannels: ['微信支付直連', '支付寶原生'], active: true },
-        { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00, collectFeeRate: 0.75, payoutFeeRate: 0.45, minLimit: 100, maxLimit: 50000, settleMode: 'T1', connectedChannels: ['銀聯快速代付'], active: true }
+        { id: 'MCH-1001', name: '菲律賓跨境跨境電商', rawBalance: 285000.00, collectFeeRate: 1.2, payoutFeeRate: 0.8, minLimit: 100, maxLimit: 50000, settleMode: 'D0', connectedChannels: ['GCash (Xendit)', 'PayMaya Native'], active: true },
+        { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00, collectFeeRate: 0.75, payoutFeeRate: 0.45, minLimit: 100, maxLimit: 50000, settleMode: 'T1', connectedChannels: ['微信支付直連'], active: true }
       ],
 
-      // 豐富訂單數據 (包含三個訂單號對應關係)
+      // 包含三號對應與 GCash 帳號資訊
       collectList: [
-        { time: '2026-08-13 10:12:00', mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-WX-9981', merchant: '閃電電商', amount: 5000, status: '支付成功' },
-        { time: '2026-08-13 10:25:14', mchNo: 'MCH202608130002', sysNo: 'SYS-C-88102', supNo: 'SUP-ALI-8822', merchant: '閃電電商', amount: 12500, status: '支付成功' },
-        { time: '2026-08-13 11:02:40', mchNo: 'MCH202608130003', sysNo: 'SYS-C-88103', supNo: 'SUP-WX-9983', merchant: '海淘優選', amount: 3200, status: '支付成功' },
-        { time: '2026-08-13 11:40:00', mchNo: 'MCH202608130004', sysNo: 'SYS-C-88104', supNo: 'SUP-ALI-8825', merchant: '海淘優選', amount: 18000, status: '支付成功' }
+        { time: '2026-08-13 10:12:00', mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-GCASH-9981', currency: 'PHP', merchant: '菲律賓跨境跨境電商', amount: 3500, status: '支付成功' },
+        { time: '2026-08-13 10:25:14', mchNo: 'MCH202608130002', sysNo: 'SYS-C-88102', supNo: 'SUP-MAYA-8822', currency: 'PHP', merchant: '菲律賓跨境跨境電商', amount: 12500, status: '支付成功' },
+        { time: '2026-08-13 11:02:40', mchNo: 'MCH202608130003', sysNo: 'SYS-C-88103', supNo: 'SUP-WX-9983', currency: 'CNY', merchant: '海淘優選', amount: 3200, status: '支付成功' }
       ],
 
       payoutList: [
-        { time: '2026-08-13 11:05:22', mchNo: 'MCH202608130099', sysNo: 'SYS-P-99201', supNo: 'SUP-UNION-112', merchant: '海淘優選', amount: 20000, status: '打款成功' },
-        { time: '2026-08-13 11:30:10', mchNo: 'MCH202608130100', sysNo: 'SYS-P-99202', supNo: 'SUP-UNION-113', merchant: '閃電電商', amount: 45000, status: '打款成功' },
-        { time: '2026-08-13 12:10:05', mchNo: 'MCH202608130101', sysNo: 'SYS-P-99203', supNo: 'SUP-UNION-114', merchant: '閃電電商', amount: 8000, status: '打款成功' }
+        { time: '2026-08-13 11:05:22', mchNo: 'MCH202608130099', sysNo: 'SYS-P-99201', supNo: 'SUP-GCASH-OUT-112', targetAccount: '09171234567 (GCash)', currency: 'PHP', merchant: '菲律賓跨境跨境電商', amount: 15000, status: '打款成功' },
+        { time: '2026-08-13 11:30:10', mchNo: 'MCH202608130100', sysNo: 'SYS-P-99202', supNo: 'SUP-UNION-113', targetAccount: '622202******8819', currency: 'CNY', merchant: '海淘優選', amount: 45000, status: '打款成功' }
       ],
 
       supCollectList: [
-        { date: '2026-08-13 10:20:00', mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-WX-9981', supplier: '微信官方直連', amount: 5000, status: '成功' },
-        { date: '2026-08-13 10:25:00', mchNo: 'MCH202608130002', sysNo: 'SYS-C-88102', supNo: 'SUP-ALI-8822', supplier: '支付寶聚合', amount: 12500, status: '成功' }
+        { date: '2026-08-13 10:20:00', mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-GCASH-9981', currency: 'PHP', supplier: 'Xendit (GCash)', amount: 3500, status: '成功' },
+        { date: '2026-08-13 10:25:00', mchNo: 'MCH202608130002', sysNo: 'SYS-C-88102', supNo: 'SUP-MAYA-8822', currency: 'PHP', supplier: 'PayMaya Official', amount: 12500, status: '成功' }
       ],
 
       supPayoutList: [
-        { date: '2026-08-13 11:45:00', mchNo: 'MCH202608130099', sysNo: 'SYS-P-99201', supNo: 'SUP-UNION-112', supplier: '銀聯極速通道', amount: 20000, status: '成功' },
-        { date: '2026-08-13 12:00:00', mchNo: 'MCH202608130100', sysNo: 'SYS-P-99202', supNo: 'SUP-UNION-113', supplier: '銀聯極速通道', amount: 45000, status: '成功' }
+        { date: '2026-08-13 11:45:00', mchNo: 'MCH202608130099', sysNo: 'SYS-P-99201', supNo: 'SUP-GCASH-OUT-112', currency: 'PHP', supplier: 'Xendit Disbursement', amount: 15000, status: '成功' }
       ],
 
       runSummaryList: [
-        { date: '2026-08-13', merchant: '閃電電商', channel: '微信支付', collectAmt: 158200, payoutAmt: 50000 },
-        { date: '2026-08-13', merchant: '海淘優選', channel: '支付寶', collectAmt: 89300, payoutAmt: 20000 }
+        { date: '2026-08-13', merchant: '菲律賓跨境跨境電商', channel: 'GCash (Xendit)', collectAmt: 285000, payoutAmt: 65000 },
+        { date: '2026-08-13', merchant: '海淘優選', channel: '微信支付', collectAmt: 89300, payoutAmt: 20000 }
       ],
 
       balanceLogs: [
-        { id: 'LOG-01', time: '2026-08-13 09:00:00', merchantName: '閃電電商', type: '手動充值', beforeBal: 108200, changeAmt: 50000, afterBal: 158200, reason: '線上轉帳充值' }
+        { id: 'LOG-01', time: '2026-08-13 09:00:00', merchantName: '菲律賓跨境跨境電商', type: '手動充值', beforeBal: 185000, changeAmt: 100000, afterBal: 285000, reason: 'GCash 預付款充值' }
       ]
     }
   },
@@ -525,17 +525,8 @@ const app = createApp({
     isPayoutQueryMenu() { return this.activeMenu.startsWith('payout_'); },
     isSettlementMenu() { return this.activeMenu.startsWith('settlement_'); },
 
-    // 代收訂單過濾邏輯（輸入任一單號，皆可顯示全貌與對應另外兩單號）
-    filteredCollectList() {
-      return this.filterOrders(this.collectList);
-    },
-
-    // 代付訂單過濾邏輯
-    filteredPayoutList() {
-      return this.filterOrders(this.payoutList);
-    },
-
-    // 供應商訂單過濾邏輯
+    filteredCollectList() { return this.filterOrders(this.collectList); },
+    filteredPayoutList() { return this.filterOrders(this.payoutList); },
     filteredSupplierList() {
       const list = this.isPayoutMenu(this.activeMenu) ? this.supPayoutList : this.supCollectList;
       return this.filterOrders(list);
@@ -557,7 +548,7 @@ const app = createApp({
     totalPayout() { return this.runSummaryList.reduce((s, i) => s + i.payoutAmt, 0); }
   },
   methods: {
-    // 核心搜尋過濾演算法：支持三號中任一匹配，即秀出對應整筆資料
+    // 核心三號連動搜尋邏輯
     filterOrders(list) {
       const mch = this.searchQuery.mchNo.trim().toLowerCase();
       const sys = this.searchQuery.sysNo.trim().toLowerCase();
@@ -613,7 +604,7 @@ const app = createApp({
         minLimit: 100,
         maxLimit: 50000,
         settleMode: 'D0',
-        connectedChannels: ['微信支付直連'],
+        connectedChannels: ['GCash (Xendit)'],
         active: true
       };
       this.showAddMerchantModal = true;
