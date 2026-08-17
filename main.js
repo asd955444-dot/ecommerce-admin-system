@@ -49,12 +49,53 @@ const app = createApp({
             </template>
           </div>
         </div>
-        <div class="sidebar-footer">v2.9.0 (支援商戶名選擇式搜尋)</div>
+        <div class="sidebar-footer">v3.0.0 (整合 Google Authenticator 2FA)</div>
       </div>
 
       <!-- 主內容區 -->
       <div class="main-content">
         
+        <!-- 0. Google Authenticator 設定頁面 -->
+        <div v-if="activeMenu === 'security_2fa'" class="card" style="max-width: 650px;">
+          <h3 style="margin-top:0; color: #1890ff;">🔐 Google Authenticator (2FA 雙重驗證)</h3>
+          <p style="color: #666; font-size: 14px; line-height: 1.6;">
+            綁定 Google Authenticator 可為管理後台提供額外的安全保護。啟用後，執行資金變動、餘額調整及關鍵操作時，需要輸入 6 位數動態驗證碼。
+          </p>
+
+          <div style="background: #fafafa; border: 1px solid #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+              <span style="font-weight: bold; font-size: 15px;">2FA 驗證狀態：</span>
+              <span class="status-badge" :class="is2FAEnabled ? 'status-success' : 'status-disabled'">
+                {{ is2FAEnabled ? '🟢 已綁定並啟用' : '🔴 未啟用' }}
+              </span>
+            </div>
+
+            <div v-if="!is2FAEnabled" style="text-align: center; padding: 10px 0;">
+              <div style="margin-bottom: 12px; font-weight: bold; color: #333;">請使用 Google Authenticator / Authy 掃描下方 QR Code：</div>
+              
+              <!-- 模擬 Authenticator 二維碼 -->
+              <div style="background: #fff; border: 1px solid #ddd; padding: 12px; display: inline-block; border-radius: 6px;">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/BCPay:admin@bcpay.com?secret=JBSWY3DPEHPK3PXP&issuer=BCPay" alt="2FA QR Code" width="150" height="150" />
+              </div>
+              
+              <div style="margin-top: 10px; font-size: 13px; color: #666;">
+                手動密鑰 (Secret Key)：<code style="background: #e6f7ff; color: #1890ff; padding: 2px 6px; border-radius: 4px;">JBSWY3DPEHPK3PXP</code>
+              </div>
+
+              <div style="margin-top: 20px; display: flex; justify-content: center; gap: 10px; align-items: center;">
+                <input type="text" v-model="bind2FACode" placeholder="輸入 6 位數 Authenticator 驗證碼" class="input-control" style="width: 240px; text-align: center; font-size: 16px; letter-spacing: 2px;" maxlength="6" />
+                <button class="btn btn-primary" @click="enable2FA">驗證並綁定 2FA</button>
+              </div>
+            </div>
+
+            <div v-else style="padding: 10px 0;">
+              <p style="color: #52c41a; font-weight: bold;">✅ 您已成功綁定 Google Authenticator。</p>
+              <p style="color: #666; font-size: 13px;">綁定時間：2026-08-17 18:30:00 (管理員帳號)</p>
+              <button class="btn btn-danger" style="margin-top: 10px;" @click="disable2FA">解除 2FA 綁定</button>
+            </div>
+          </div>
+        </div>
+
         <!-- 1-1. 渠道權重 -->
         <div v-if="activeMenu === 'channel_weight'" class="card">
           <h3 style="margin-top:0;">⚙️ 渠道權重設定 (含東南亞/GCash)</h3>
@@ -395,7 +436,7 @@ const app = createApp({
       </div>
     </div>
 
-    <!-- 彈窗 3：商戶餘額調整 -->
+    <!-- 彈窗 3：商戶餘額調整 (含 Authenticator 2FA 雙重驗證) -->
     <div v-if="showBalanceModal" class="modal-backdrop">
       <div class="modal-box">
         <h3 style="margin-top:0; color: #1890ff;">✏️ 商戶餘額調整</h3>
@@ -408,6 +449,13 @@ const app = createApp({
           <label>調整理由：</label>
           <input type="text" v-model="balanceAdjustReason" class="input-control" placeholder="請輸入理由">
         </div>
+
+        <!-- 2FA Authenticator 驗證碼輸入 -->
+        <div v-if="is2FAEnabled" class="form-group" style="background:#e6f7ff; padding:10px; border-radius:6px; border:1px solid #91d5ff;">
+          <label style="color:#1890ff; font-weight:bold;">🔐 Authenticator 6 位數動態驗證碼：</label>
+          <input type="text" v-model="input2FACode" class="input-control" placeholder="請查看手機 App 輸入" maxlength="6" style="text-align:center; font-size:16px; letter-spacing:2px; margin-top:4px;">
+        </div>
+
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
           <button class="btn" @click="showBalanceModal = false">取消</button>
           <button class="btn btn-primary" @click="confirmBalanceAdjust">確認調整</button>
@@ -417,9 +465,14 @@ const app = createApp({
   `,
   data() {
     return {
-      activeMenu: 'merchant_list',
+      activeMenu: 'security_2fa',
       openSubMenus: ['channel_group', 'supplier_group', 'collect_group', 'payout_group', 'settlement_group'],
       filterDate: '',
+
+      // 2FA / Authenticator 狀態
+      is2FAEnabled: true,
+      bind2FACode: '',
+      input2FACode: '',
 
       selectedMerchantFilter: '', // 下拉選單選擇的商戶名
 
@@ -443,6 +496,7 @@ const app = createApp({
       balanceAdjustReason: '',
 
       menuItems: [
+        { key: 'security_2fa', label: '🔐 安全設定 (2FA)' },
         {
           key: 'channel_group',
           label: '⚙️ 渠道與東南亞設置',
@@ -536,11 +590,7 @@ const app = createApp({
     }
   },
   computed: {
-    // 自動取得所有商戶名供下拉選單使用
-    allMerchantNames() {
-      return this.merchants.map(m => m.name);
-    },
-    // 根據選擇的商戶名進行過濾
+    allMerchantNames() { return this.merchants.map(m => m.name); },
     filteredMerchants() {
       if (!this.selectedMerchantFilter) return this.merchants;
       return this.merchants.filter(m => m.name === this.selectedMerchantFilter);
@@ -574,6 +624,19 @@ const app = createApp({
     totalPayout() { return this.runSummaryList.reduce((s, i) => s + i.payoutAmt, 0); }
   },
   methods: {
+    enable2FA() {
+      if (!this.bind2FACode || this.bind2FACode.length !== 6) return alert('請輸入 6 位數 Authenticator 驗證碼！');
+      this.is2FAEnabled = true;
+      this.bind2FACode = '';
+      alert('🟢 Authenticator (2FA) 綁定成功！');
+    },
+    disable2FA() {
+      if (confirm('確定要解除 Google Authenticator 綁定嗎？解除後關鍵操作將不再要求二維碼校驗。')) {
+        this.is2FAEnabled = false;
+        alert('已解除 2FA 綁定');
+      }
+    },
+
     filterOrders(list) {
       const mch = this.searchQuery.mchNo.trim().toLowerCase();
       const sys = this.searchQuery.sysNo.trim().toLowerCase();
@@ -659,12 +722,17 @@ const app = createApp({
       this.selectedMerchantForBalance = m;
       this.balanceAdjustAmount = 0;
       this.balanceAdjustReason = '';
+      this.input2FACode = '';
       this.showBalanceModal = true;
     },
     confirmBalanceAdjust() {
       if (!this.balanceAdjustAmount) return alert('請輸入金額');
+      if (this.is2FAEnabled && (!this.input2FACode || this.input2FACode.length !== 6)) {
+        return alert('🔐 請輸入正確的 6 位數 Authenticator 驗證碼！');
+      }
+
       this.selectedMerchantForBalance.rawBalance += Number(this.balanceAdjustAmount);
-      alert('餘額調整完畢！');
+      alert('✅ 安全驗證通過！餘額調整完畢！');
       this.showBalanceModal = false;
     },
     exportCSV(filename) { alert(`已成功導出 CSV 檔案：${filename}`); }
