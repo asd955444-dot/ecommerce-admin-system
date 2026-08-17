@@ -49,7 +49,7 @@ const app = createApp({
             </template>
           </div>
         </div>
-        <div class="sidebar-footer">v2.8.0 (支援 GCash/東南亞跨境)</div>
+        <div class="sidebar-footer">v2.9.0 (支援商戶名選擇式搜尋)</div>
       </div>
 
       <!-- 主內容區 -->
@@ -229,18 +229,31 @@ const app = createApp({
           </table>
         </div>
 
-        <!-- 5. 商戶列表 & 配置調整 -->
+        <!-- 5. 商戶列表 & 配置調整 (含選擇式商戶名搜尋) -->
         <div v-else-if="activeMenu === 'merchant_list'" class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
             <h3 style="margin: 0;">🏢 商戶列表與配置管理</h3>
             <button class="btn btn-primary" @click="openAddMerchantModal">➕ 新增商戶</button>
           </div>
+
+          <!-- 選擇式商戶名搜尋欄 -->
+          <div class="search-box-group" style="margin-bottom: 20px; background: #fafafa; padding: 12px; border-radius: 6px; border: 1px solid #f0f0f0;">
+            <label style="font-weight: bold; color: #4a5568;">🔍 篩選商戶名：</label>
+            <select v-model="selectedMerchantFilter" class="input-control" style="width: 240px; background-color: #fff;">
+              <option value="">-- 所有商戶名 (全部) --</option>
+              <option v-for="name in allMerchantNames" :key="name" :value="name">
+                {{ name }}
+              </option>
+            </select>
+            <button v-if="selectedMerchantFilter" class="btn" style="background:#e0e0e0; color:#333;" @click="selectedMerchantFilter = ''">重置篩選</button>
+          </div>
+
           <table class="data-table">
             <thead>
               <tr><th>商戶 ID</th><th>商戶名稱</th><th>目前餘額</th><th>費率 (代收/代付)</th><th>單筆限額</th><th>結算模式</th><th>已串渠道</th><th>狀態</th><th>操作</th></tr>
             </thead>
             <tbody>
-              <tr v-for="m in merchants" :key="m.id">
+              <tr v-for="m in filteredMerchants" :key="m.id">
                 <td><code>{{ m.id }}</code></td>
                 <td><strong>{{ m.name }}</strong></td>
                 <td style="color:#1890ff; font-weight:bold;">￥{{ (m.rawBalance || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}) }}</td>
@@ -261,6 +274,9 @@ const app = createApp({
                     <button class="btn btn-primary" style="padding: 4px 8px; font-size:12px;" @click="openBalanceModal(m)">✏️ 餘額調整</button>
                   </div>
                 </td>
+              </tr>
+              <tr v-if="filteredMerchants.length === 0">
+                <td colspan="9" style="text-align:center; color:#999; padding:24px;">查無符合「{{ selectedMerchantFilter }}」的商戶資料</td>
               </tr>
             </tbody>
           </table>
@@ -405,6 +421,8 @@ const app = createApp({
       openSubMenus: ['channel_group', 'supplier_group', 'collect_group', 'payout_group', 'settlement_group'],
       filterDate: '',
 
+      selectedMerchantFilter: '', // 下拉選單選擇的商戶名
+
       searchQuery: {
         mchNo: '',
         sysNo: '',
@@ -475,7 +493,6 @@ const app = createApp({
         }
       ],
 
-      // 擴充包含 GCash 及東南亞本地錢包渠道
       channels: [
         { id: 'CHN-01', name: 'GCash (Xendit)', type: '代收', provider: 'Xendit Gateway', currency: 'PHP', weight: 50, minLimit: 100, maxLimit: 50000, active: true },
         { id: 'CHN-02', name: 'GCash Direct Payout', type: '代付', provider: 'Xendit Disbursement', currency: 'PHP', weight: 50, minLimit: 100, maxLimit: 50000, active: true },
@@ -488,7 +505,6 @@ const app = createApp({
         { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00, collectFeeRate: 0.75, payoutFeeRate: 0.45, minLimit: 100, maxLimit: 50000, settleMode: 'T1', connectedChannels: ['微信支付直連'], active: true }
       ],
 
-      // 包含三號對應與 GCash 帳號資訊
       collectList: [
         { time: '2026-08-13 10:12:00', mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-GCASH-9981', currency: 'PHP', merchant: '菲律賓跨境跨境電商', amount: 3500, status: '支付成功' },
         { time: '2026-08-13 10:25:14', mchNo: 'MCH202608130002', sysNo: 'SYS-C-88102', supNo: 'SUP-MAYA-8822', currency: 'PHP', merchant: '菲律賓跨境跨境電商', amount: 12500, status: '支付成功' },
@@ -520,6 +536,16 @@ const app = createApp({
     }
   },
   computed: {
+    // 自動取得所有商戶名供下拉選單使用
+    allMerchantNames() {
+      return this.merchants.map(m => m.name);
+    },
+    // 根據選擇的商戶名進行過濾
+    filteredMerchants() {
+      if (!this.selectedMerchantFilter) return this.merchants;
+      return this.merchants.filter(m => m.name === this.selectedMerchantFilter);
+    },
+
     isSupplierQueryMenu() { return this.activeMenu.startsWith('sup_'); },
     isCollectQueryMenu() { return this.activeMenu.startsWith('collect_'); },
     isPayoutQueryMenu() { return this.activeMenu.startsWith('payout_'); },
@@ -548,7 +574,6 @@ const app = createApp({
     totalPayout() { return this.runSummaryList.reduce((s, i) => s + i.payoutAmt, 0); }
   },
   methods: {
-    // 核心三號連動搜尋邏輯
     filterOrders(list) {
       const mch = this.searchQuery.mchNo.trim().toLowerCase();
       const sys = this.searchQuery.sysNo.trim().toLowerCase();
