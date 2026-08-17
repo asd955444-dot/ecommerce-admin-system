@@ -1,798 +1,261 @@
-import { createApp } from 'vue/dist/vue.esm-bundler.js'
+import { createApp, ref, reactive } from 'vue/dist/vue.esm-bundler.js'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 
 const app = createApp({
   template: `
-    <div class="layout-container">
-      <!-- 左側選單欄 -->
-      <div class="sidebar">
-        <div>
-          <div class="sidebar-logo">💳 BCPay 聚合支付系統</div>
-          <div class="sidebar-menu">
-            <template v-for="item in menuItems" :key="item.key">
-              
-              <!-- 有子選單 -->
-              <div v-if="item.children">
-                <div 
-                  class="menu-item menu-parent"
-                  :class="{ active: isChildActive(item) }"
-                  @click="toggleSubMenu(item.key)"
-                >
-                  <span>{{ item.label }}</span>
-                  <span class="arrow-icon" :class="{ open: openSubMenus.includes(item.key) }">▼</span>
-                </div>
+    <div class="bc-pay-layout">
+      <!-- 頂部導覽列 -->
+      <header class="header">
+        <div class="logo">BC Pay 聚合支付管理後台 v3.0.0</div>
+        <div class="user-info">
+          <el-tag type="success" effect="plain" class="mr-2">2FA & 帳密保護已啟用</el-tag>
+          <span>當前管理員: admin_master</span>
+        </div>
+      </header>
 
-                <div v-show="openSubMenus.includes(item.key)" class="submenu-container">
-                  <div 
-                    v-for="sub in item.children" 
-                    :key="sub.key"
-                    class="submenu-item"
-                    :class="{ active: activeMenu === sub.key }"
-                    @click="activeMenu = sub.key"
-                  >
-                    └ {{ sub.label }}
-                  </div>
-                </div>
-              </div>
+      <div class="main-container">
+        <!-- 側邊選單 -->
+        <aside class="aside">
+          <el-menu default-active="merchant-list" class="el-menu-vertical">
+            <el-sub-menu index="merchant">
+              <template #title>
+                <span>商戶與帳號管理</span>
+              </template>
+              <el-menu-item index="merchant-list">商戶列表與開戶</el-menu-item>
+              <el-menu-item index="balance-log">餘額調整紀錄</el-menu-item>
+            </el-sub-menu>
 
-              <!-- 單層選單 -->
-              <div 
-                v-else 
-                class="menu-item"
-                :class="{ active: activeMenu === item.key }"
-                @click="activeMenu = item.key"
+            <el-sub-menu index="orders">
+              <template #title>
+                <span>交易訂單查詢</span>
+              </template>
+              <el-menu-item index="payin-orders">代收訂單</el-menu-item>
+              <el-menu-item index="payout-orders">代付訂單</el-menu-item>
+            </el-sub-menu>
+
+            <el-menu-item index="security-setting" @click="securityModalVisible = true">
+              <span>Google 2FA 安全設定</span>
+            </el-menu-item>
+          </el-menu>
+        </aside>
+
+        <!-- 主要內容區域 -->
+        <main class="content">
+          <el-card class="box-card mb-4">
+            <div class="filter-container">
+              <el-select
+                v-model="selectedMerchant"
+                filterable
+                clearable
+                placeholder="下拉選單：所有商戶名稱"
+                class="filter-item"
               >
-                {{ item.label }}
-              </div>
+                <el-option
+                  v-for="item in merchantOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
 
+              <el-input
+                v-model="searchOrderNo"
+                placeholder="請輸入三號連動查詢 (商戶/系統/供應商單號)"
+                class="filter-item search-input"
+                clearable
+              />
+
+              <el-button type="primary" @click="handleSearch">關聯搜尋</el-button>
+            </div>
+          </el-card>
+
+          <!-- 商戶列表卡片 -->
+          <el-card class="box-card">
+            <template #header>
+              <div class="card-header">
+                <span>商戶餘額與渠道清單</span>
+                <el-button type="primary" size="small">新增商戶開戶</el-button>
+              </div>
             </template>
-          </div>
-        </div>
-        <div class="sidebar-footer">v3.0.0 (整合 Google Authenticator 2FA)</div>
+
+            <el-table :data="merchantList" border style="width: 100%">
+              <el-table-column prop="id" label="商戶 ID" width="110" />
+              <el-table-column prop="name" label="商戶名稱" width="180" />
+              <el-table-column prop="balance" label="可用餘額 (PHP)" width="160">
+                <template #default="scope">
+                  ₱ {{ scope.row.balance.toLocaleString() }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="settlement" label="結算模式" width="100" />
+              <el-table-column prop="channels" label="已串通道" width="140">
+                <template #default="scope">
+                  <el-tag size="small" type="info">{{ scope.row.channels }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="狀態" width="100">
+                <template #default="scope">
+                  <el-tag :type="scope.row.status === '啟用' ? 'success' : 'danger'">
+                    {{ scope.row.status }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="高風險關鍵操作" min-width="220">
+                <template #default="scope">
+                  <el-button
+                    type="warning"
+                    size="small"
+                    @click="triggerSecureAction('BALANCE_ADJUST', scope.row)"
+                  >
+                    餘額調整
+                  </el-button>
+                  <el-button
+                    type="danger"
+                    size="small"
+                    @click="triggerSecureAction('PAYOUT_DISBURSEMENT', scope.row)"
+                  >
+                    發起代付
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+        </main>
       </div>
 
-      <!-- 主內容區 -->
-      <div class="main-content">
-        
-        <!-- 0. Google Authenticator 設定頁面 -->
-        <div v-if="activeMenu === 'security_2fa'" class="card" style="max-width: 650px;">
-          <h3 style="margin-top:0; color: #1890ff;">🔐 Google Authenticator (2FA 雙重驗證)</h3>
-          <p style="color: #666; font-size: 14px; line-height: 1.6;">
-            綁定 Google Authenticator 可為管理後台提供額外的安全保護。啟用後，執行資金變動、餘額調整及關鍵操作時，需要輸入 6 位數動態驗證碼。
-          </p>
+      <!-- 高風險關鍵操作：帳號 + 密碼 + 2FA 三重驗證彈窗 -->
+      <el-dialog
+        v-model="confirmModalVisible"
+        title="高風險操作 - 管理員三重安全驗證"
+        width="460px"
+        :close-on-click-modal="false"
+      >
+        <el-alert
+          title="為了保障資金與結算安全，請輸入您的管理員帳號、密碼及 6 位數 2FA 動態驗證碼。"
+          type="warning"
+          show-icon
+          :closable="false"
+          class="mb-4"
+        />
 
-          <div style="background: #fafafa; border: 1px solid #f0f0f0; padding: 20px; border-radius: 8px; margin-top: 16px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-              <span style="font-weight: bold; font-size: 15px;">2FA 驗證狀態：</span>
-              <span class="status-badge" :class="is2FAEnabled ? 'status-success' : 'status-disabled'">
-                {{ is2FAEnabled ? '🟢 已綁定並啟用' : '🔴 未啟用' }}
-              </span>
-            </div>
+        <el-form :model="confirmForm" label-position="top">
+          <el-form-item label="管理員帳號">
+            <el-input
+              v-model="confirmForm.adminAccount"
+              placeholder="請輸入管理員帳號"
+            />
+          </el-form-item>
 
-            <div v-if="!is2FAEnabled" style="text-align: center; padding: 10px 0;">
-              <div style="margin-bottom: 12px; font-weight: bold; color: #333;">請使用 Google Authenticator / Authy 掃描下方 QR Code：</div>
-              
-              <!-- 模擬 Authenticator 二維碼 -->
-              <div style="background: #fff; border: 1px solid #ddd; padding: 12px; display: inline-block; border-radius: 6px;">
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/BCPay:admin@bcpay.com?secret=JBSWY3DPEHPK3PXP&issuer=BCPay" alt="2FA QR Code" width="150" height="150" />
-              </div>
-              
-              <div style="margin-top: 10px; font-size: 13px; color: #666;">
-                手動密鑰 (Secret Key)：<code style="background: #e6f7ff; color: #1890ff; padding: 2px 6px; border-radius: 4px;">JBSWY3DPEHPK3PXP</code>
-              </div>
+          <el-form-item label="管理員密碼">
+            <el-input
+              v-model="confirmForm.adminPassword"
+              type="password"
+              show-password
+              placeholder="請輸入管理員密碼"
+            />
+          </el-form-item>
 
-              <div style="margin-top: 20px; display: flex; justify-content: center; gap: 10px; align-items: center;">
-                <input type="text" v-model="bind2FACode" placeholder="輸入 6 位數 Authenticator 驗證碼" class="input-control" style="width: 240px; text-align: center; font-size: 16px; letter-spacing: 2px;" maxlength="6" />
-                <button class="btn btn-primary" @click="enable2FA">驗證並綁定 2FA</button>
-              </div>
-            </div>
+          <el-form-item label="Google Authenticator 驗證碼 (2FA)">
+            <el-input
+              v-model="confirmForm.totpCode"
+              maxlength="6"
+              placeholder="請輸入 6 位數動態碼"
+            />
+          </el-form-item>
+        </el-form>
 
-            <div v-else style="padding: 10px 0;">
-              <p style="color: #52c41a; font-weight: bold;">✅ 您已成功綁定 Google Authenticator。</p>
-              <p style="color: #666; font-size: 13px;">綁定時間：2026-08-17 18:30:00 (管理員帳號)</p>
-              <button class="btn btn-danger" style="margin-top: 10px;" @click="disable2FA">解除 2FA 綁定</button>
-            </div>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="confirmModalVisible = false">取消</el-button>
+            <el-button type="primary" :loading="submitting" @click="submitSecureVerification">
+              確認驗證並執行
+            </el-button>
+          </span>
+        </template>
+      </el-dialog>
+
+      <!-- 2FA 安全設定彈窗 -->
+      <el-dialog
+        v-model="securityModalVisible"
+        title="Google Authenticator (2FA) 安全綁定設定"
+        width="500px"
+      >
+        <div class="security-settings-content">
+          <p class="mb-3">掃描下方 QR Code 或手動輸入密鑰以綁定 Google Authenticator 雙重驗證。</p>
+          <div class="qr-placeholder mb-3">
+            <div class="qr-box">🟢 [動態產生的 QR Code]</div>
           </div>
+          <el-input readonly value="BCPAY888SECURITYSECRETKEY2026" class="mb-3">
+            <template #prepend>Secret Key</template>
+          </el-input>
+          <el-tag type="warning">目前狀態：尚未綁定 (is2FAEnabled: false)</el-tag>
         </div>
-
-        <!-- 1-1. 渠道權重 -->
-        <div v-if="activeMenu === 'channel_weight'" class="card">
-          <h3 style="margin-top:0;">⚙️ 渠道權重設定 (含東南亞/GCash)</h3>
-          <table class="data-table">
-            <thead>
-              <tr><th>渠道名稱</th><th>類型 / 幣別</th><th>當前權重 (1-100)</th><th>分流比例</th><th>操作</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="c in channels" :key="c.id">
-                <td><strong>{{ c.name }}</strong></td>
-                <td><span class="tag">{{ c.type }} ({{ c.currency }})</span></td>
-                <td><input type="number" v-model.number="c.weight" class="input-control" style="width:80px;" /></td>
-                <td><span class="tag">{{ c.weight }}%</span></td>
-                <td><button class="btn btn-primary" @click="saveChannelWeight(c)">儲存權重</button></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 1-2. 渠道開關 -->
-        <div v-if="activeMenu === 'channel_toggle'" class="card">
-          <h3 style="margin-top:0;">🔌 渠道狀態與 API 模式開關</h3>
-          <table class="data-table">
-            <thead>
-              <tr><th>渠道 ID</th><th>渠道名稱</th><th>對接方式 / 幣別</th><th>單筆限額</th><th>當前狀態</th><th>切換開關</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="c in channels" :key="c.id">
-                <td><code>{{ c.id }}</code></td>
-                <td><strong>{{ c.name }}</strong></td>
-                <td><span class="tag">{{ c.provider }} / {{ c.currency }}</span></td>
-                <td>{{ c.currency === 'PHP' ? '₱' : '￥' }}{{ c.minLimit }} - {{ c.currency === 'PHP' ? '₱' : '￥' }}{{ c.maxLimit }}</td>
-                <td>
-                  <span class="status-badge" :class="c.active ? 'status-success' : 'status-disabled'">
-                    {{ c.active ? '🟢 已開啟' : '🔴 已關閉' }}
-                  </span>
-                </td>
-                <td>
-                  <button class="btn" :class="c.active ? 'btn-danger' : 'btn-success'" @click="c.active = !c.active">
-                    {{ c.active ? '關閉渠道' : '開啟渠道' }}
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 2. 供應商訂單查詢 -->
-        <div v-else-if="isSupplierQueryMenu" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0;">🏭 {{ getMenuTitle(activeMenu) }}</h3>
-            <button class="btn btn-primary" @click="exportCSV(getMenuTitle(activeMenu) + '.csv')">📥 導出 CSV</button>
-          </div>
-          
-          <div class="search-box-group" style="margin-bottom: 20px;">
-            <input type="text" v-model="searchQuery.mchNo" placeholder="商戶訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.sysNo" placeholder="系統訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號" class="input-control" />
-            
-            <select v-model="searchQuery.dateType" class="input-control" style="width: 100px;">
-              <option value="day">按日選擇</option>
-              <option value="month">按月選擇</option>
-            </select>
-            <input :type="searchQuery.dateType === 'day' ? 'date' : 'month'" v-model="searchQuery.selectedDate" class="input-control" />
-            
-            <button class="btn btn-primary" @click="resetSearch">🧹 重置</button>
-          </div>
-
-          <table class="data-table">
-            <thead>
-              <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>供應商 / 通道</th><th>金額</th><th>狀態</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="o in filteredSupplierList" :key="o.sysNo">
-                <td>{{ o.date }}</td>
-                <td><code>{{ o.mchNo }}</code></td>
-                <td><code>{{ o.sysNo }}</code></td>
-                <td><code>{{ o.supNo }}</code></td>
-                <td>{{ o.supplier }}</td>
-                <td :style="{ color: isPayoutMenu(activeMenu) ? '#fa8c16' : '#52c41a', fontWeight: 'bold' }">{{ o.currency === 'PHP' ? '₱' : '￥' }}{{ o.amount.toLocaleString() }}</td>
-                <td><span class="status-badge status-success">{{ o.status }}</span></td>
-              </tr>
-              <tr v-if="filteredSupplierList.length === 0">
-                <td colspan="7" style="text-align:center; color:#999; padding:24px;">未找到符合條件的訂單數據</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 3. 代收訂單查詢 -->
-        <div v-else-if="isCollectQueryMenu" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0;">📥 {{ getMenuTitle(activeMenu) }}</h3>
-            <button class="btn btn-primary" @click="exportCSV(getMenuTitle(activeMenu) + '.csv')">📥 導出 CSV</button>
-          </div>
-
-          <div class="search-box-group" style="margin-bottom: 20px;">
-            <input type="text" v-model="searchQuery.mchNo" placeholder="商戶訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.sysNo" placeholder="系統訂單號" class="input-control" />
-            <input v-if="activeMenu === 'collect_exact'" type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號 (精準)" class="input-control" />
-            
-            <select v-model="searchQuery.dateType" class="input-control" style="width: 100px;">
-              <option value="day">按日選擇</option>
-              <option value="month">按月選擇</option>
-            </select>
-            <input :type="searchQuery.dateType === 'day' ? 'date' : 'month'" v-model="searchQuery.selectedDate" class="input-control" />
-            
-            <button class="btn btn-primary" @click="resetSearch">🧹 重置</button>
-          </div>
-
-          <table class="data-table">
-            <thead>
-              <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>商戶</th><th>金額</th><th>狀態</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="o in filteredCollectList" :key="o.sysNo">
-                <td style="font-size:12px; color:#666;">{{ o.time }}</td>
-                <td><code>{{ o.mchNo }}</code></td>
-                <td><code>{{ o.sysNo }}</code></td>
-                <td><code>{{ o.supNo }}</code></td>
-                <td>{{ o.merchant }}</td>
-                <td style="color:#52c41a; font-weight:bold;">{{ o.currency === 'PHP' ? '₱' : '￥' }}{{ o.amount.toLocaleString() }}</td>
-                <td><span class="status-badge status-success">{{ o.status }}</span></td>
-              </tr>
-              <tr v-if="filteredCollectList.length === 0">
-                <td colspan="7" style="text-align:center; color:#999; padding:24px;">未找到符合條件的訂單數據</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 4. 代付訂單查詢 (包含 GCash 錢包出款) -->
-        <div v-else-if="isPayoutQueryMenu" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 style="margin:0;">📤 {{ getMenuTitle(activeMenu) }}</h3>
-            <button class="btn btn-primary" @click="exportCSV(getMenuTitle(activeMenu) + '.csv')">📥 導出 CSV</button>
-          </div>
-
-          <div class="search-box-group" style="margin-bottom: 20px;">
-            <input type="text" v-model="searchQuery.mchNo" placeholder="商戶訂單號" class="input-control" />
-            <input type="text" v-model="searchQuery.sysNo" placeholder="系統訂單號" class="input-control" />
-            <input v-if="activeMenu === 'payout_exact'" type="text" v-model="searchQuery.supNo" placeholder="供應商訂單號 (精準)" class="input-control" />
-            
-            <select v-model="searchQuery.dateType" class="input-control" style="width: 100px;">
-              <option value="day">按日選擇</option>
-              <option value="month">按月選擇</option>
-            </select>
-            <input :type="searchQuery.dateType === 'day' ? 'date' : 'month'" v-model="searchQuery.selectedDate" class="input-control" />
-            
-            <button class="btn btn-primary" @click="resetSearch">🧹 重置</button>
-          </div>
-
-          <table class="data-table">
-            <thead>
-              <tr><th>時間</th><th>商戶訂單號</th><th>系統訂單號</th><th>供應商訂單號</th><th>接收帳號 (GCash/卡號)</th><th>商戶</th><th>金額</th><th>狀態</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="o in filteredPayoutList" :key="o.sysNo">
-                <td style="font-size:12px; color:#666;">{{ o.time }}</td>
-                <td><code>{{ o.mchNo }}</code></td>
-                <td><code>{{ o.sysNo }}</code></td>
-                <td><code>{{ o.supNo }}</code></td>
-                <td><code>{{ o.targetAccount || '-' }}</code></td>
-                <td>{{ o.merchant }}</td>
-                <td style="color:#fa8c16; font-weight:bold;">{{ o.currency === 'PHP' ? '₱' : '￥' }}{{ o.amount.toLocaleString() }}</td>
-                <td><span class="status-badge status-success">{{ o.status }}</span></td>
-              </tr>
-              <tr v-if="filteredPayoutList.length === 0">
-                <td colspan="8" style="text-align:center; color:#999; padding:24px;">未找到符合條件的訂單數據</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 5. 商戶列表 & 配置調整 (含選擇式商戶名搜尋) -->
-        <div v-else-if="activeMenu === 'merchant_list'" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
-            <h3 style="margin: 0;">🏢 商戶列表與配置管理</h3>
-            <button class="btn btn-primary" @click="openAddMerchantModal">➕ 新增商戶</button>
-          </div>
-
-          <!-- 選擇式商戶名搜尋欄 -->
-          <div class="search-box-group" style="margin-bottom: 20px; background: #fafafa; padding: 12px; border-radius: 6px; border: 1px solid #f0f0f0;">
-            <label style="font-weight: bold; color: #4a5568;">🔍 篩選商戶名：</label>
-            <select v-model="selectedMerchantFilter" class="input-control" style="width: 240px; background-color: #fff;">
-              <option value="">-- 所有商戶名 (全部) --</option>
-              <option v-for="name in allMerchantNames" :key="name" :value="name">
-                {{ name }}
-              </option>
-            </select>
-            <button v-if="selectedMerchantFilter" class="btn" style="background:#e0e0e0; color:#333;" @click="selectedMerchantFilter = ''">重置篩選</button>
-          </div>
-
-          <table class="data-table">
-            <thead>
-              <tr><th>商戶 ID</th><th>商戶名稱</th><th>目前餘額</th><th>費率 (代收/代付)</th><th>單筆限額</th><th>結算模式</th><th>已串渠道</th><th>狀態</th><th>操作</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="m in filteredMerchants" :key="m.id">
-                <td><code>{{ m.id }}</code></td>
-                <td><strong>{{ m.name }}</strong></td>
-                <td style="color:#1890ff; font-weight:bold;">￥{{ (m.rawBalance || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2}) }}</td>
-                <td>{{ m.collectFeeRate }}% / {{ m.payoutFeeRate }}%</td>
-                <td>￥{{ m.minLimit }} - ￥{{ m.maxLimit }}</td>
-                <td><span class="tag" style="background:#f6ffed; color:#52c41a; border-color:#b7eb8f;">{{ m.settleMode || 'D0' }}</span></td>
-                <td>
-                  <span v-for="c in m.connectedChannels" :key="c" class="tag" style="margin-right: 4px;">{{ c }}</span>
-                </td>
-                <td>
-                  <span class="status-badge" :class="m.active ? 'status-success' : 'status-disabled'">
-                    {{ m.active ? '🟢 啟用' : '🔴 停用' }}
-                  </span>
-                </td>
-                <td>
-                  <div style="display:flex; gap:6px;">
-                    <button class="btn btn-warning" style="padding: 4px 8px; font-size:12px;" @click="openConfigModal(m)">⚙️ 調整配置</button>
-                    <button class="btn btn-primary" style="padding: 4px 8px; font-size:12px;" @click="openBalanceModal(m)">✏️ 餘額調整</button>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="filteredMerchants.length === 0">
-                <td colspan="9" style="text-align:center; color:#999; padding:24px;">查無符合「{{ selectedMerchantFilter }}」的商戶資料</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 6. 總跑量結算 -->
-        <div v-else-if="isSettlementMenu" class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h3 style="margin:0;">📊 總跑量結算 - {{ currentSettlementTitle }}</h3>
-            <div style="display:flex; gap:10px;">
-              <input type="date" v-model="filterDate" class="input-control" />
-              <button class="btn btn-success" @click="exportCSV(currentSettlementTitle + '.csv')">📥 導出紀錄 CSV</button>
-            </div>
-          </div>
-
-          <div v-if="activeMenu === 'settlement_logs'">
-            <h4>📜 結算明細變動紀錄</h4>
-            <table class="data-table">
-              <thead>
-                <tr><th>時間</th><th>商戶</th><th>類型</th><th>變動前</th><th>金額</th><th>變動後</th><th>理由</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="l in balanceLogs" :key="l.id">
-                  <td>{{ l.time }}</td><td>{{ l.merchantName }}</td><td><span class="tag">{{ l.type }}</span></td>
-                  <td>￥{{ l.beforeBal }}</td><td style="color:#52c41a; font-weight:bold;">+￥{{ l.changeAmt }}</td>
-                  <td>￥{{ l.afterBal }}</td><td>{{ l.reason }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div v-else>
-            <div class="card-grid">
-              <div class="card"><div class="card-title">總代收跑量 (CNY)</div><div class="card-value" style="color:#52c41a;">￥{{ totalCollect.toLocaleString() }}</div></div>
-              <div class="card"><div class="card-title">總代付跑量 (CNY)</div><div class="card-value" style="color:#fa8c16;">￥{{ totalPayout.toLocaleString() }}</div></div>
-            </div>
-            <table class="data-table">
-              <thead>
-                <tr><th>日期</th><th>項目分類</th><th>代收跑量</th><th>代付跑量</th><th>淨跑量</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="(r, idx) in runSummaryList" :key="idx">
-                  <td>{{ r.date }}</td><td><strong>{{ r.merchant }} / {{ r.channel }}</strong></td>
-                  <td style="color:#52c41a;">￥{{ r.collectAmt.toLocaleString() }}</td>
-                  <td style="color:#fa8c16;">￥{{ r.payoutAmt.toLocaleString() }}</td>
-                  <td style="color:#1890ff; font-weight:bold;">￥{{ (r.collectAmt - r.payoutAmt).toLocaleString() }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- 彈窗 1：新增商戶 -->
-    <div v-if="showAddMerchantModal" class="modal-backdrop">
-      <div class="modal-box" style="width: 500px;">
-        <h3 style="margin-top:0; color: #1890ff;">➕ 新增商戶</h3>
-        <div style="display:flex; gap:10px;">
-          <div class="form-group" style="flex:1;"><label>商戶號：</label><input type="text" v-model="newMerchant.id" class="input-control" placeholder="例: MCH-1003"></div>
-          <div class="form-group" style="flex:1;"><label>商戶名稱：</label><input type="text" v-model="newMerchant.name" class="input-control" placeholder="輸入商戶名稱"></div>
-        </div>
-        <div style="display:flex; gap:10px;">
-          <div class="form-group" style="flex:1;"><label>代收費率 (%)：</label><input type="number" v-model.number="newMerchant.collectFeeRate" step="0.01" class="input-control"></div>
-          <div class="form-group" style="flex:1;"><label>代付費率 (%)：</label><input type="number" v-model.number="newMerchant.payoutFeeRate" step="0.01" class="input-control"></div>
-        </div>
-        <div style="display:flex; gap:10px;">
-          <div class="form-group" style="flex:1;"><label>結算模式：</label>
-            <select v-model="newMerchant.settleMode" class="input-control">
-              <option value="D0">D0 (當日即時結算)</option>
-              <option value="T1">T1 (次工作日結算)</option>
-            </select>
-          </div>
-          <div class="form-group" style="flex:1;"><label>商戶啟用狀態：</label>
-            <select v-model="newMerchant.active" class="input-control">
-              <option :value="true">🟢 啟用</option>
-              <option :value="false">🔴 停用</option>
-            </select>
-          </div>
-        </div>
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
-          <button class="btn" @click="showAddMerchantModal = false">取消</button>
-          <button class="btn btn-primary" @click="confirmAddMerchant">確認新增</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 彈窗 2：調整商戶配置小窗框 -->
-    <div v-if="showConfigModal" class="modal-backdrop">
-      <div class="modal-box" style="width: 500px;">
-        <h3 style="margin-top:0; color: #fa8c16;">⚙️ 調整商戶配置 ({{ editingMerchant?.id }})</h3>
-        <div class="form-group"><label>商戶名稱：</label><input type="text" v-model="editingMerchant.name" class="input-control"></div>
-        <div style="display:flex; gap:10px;">
-          <div class="form-group" style="flex:1;"><label>代收費率 (%)：</label><input type="number" v-model.number="editingMerchant.collectFeeRate" step="0.01" class="input-control"></div>
-          <div class="form-group" style="flex:1;"><label>代付費率 (%)：</label><input type="number" v-model.number="editingMerchant.payoutFeeRate" step="0.01" class="input-control"></div>
-        </div>
-        <div style="display:flex; gap:10px;">
-          <div class="form-group" style="flex:1;"><label>結算模式：</label>
-            <select v-model="editingMerchant.settleMode" class="input-control">
-              <option value="D0">D0 (當日即時結算)</option>
-              <option value="T1">T1 (次工作日結算)</option>
-            </select>
-          </div>
-          <div class="form-group" style="flex:1;"><label>商戶啟用狀態：</label>
-            <select v-model="editingMerchant.active" class="input-control">
-              <option :value="true">🟢 啟用</option>
-              <option :value="false">🔴 停用</option>
-            </select>
-          </div>
-        </div>
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
-          <button class="btn" @click="showConfigModal = false">取消</button>
-          <button class="btn btn-warning" @click="saveMerchantConfig">儲存配置</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 彈窗 3：商戶餘額調整 (含 Authenticator 2FA 雙重驗證) -->
-    <div v-if="showBalanceModal" class="modal-backdrop">
-      <div class="modal-box">
-        <h3 style="margin-top:0; color: #1890ff;">✏️ 商戶餘額調整</h3>
-        <p>商戶：<strong>{{ selectedMerchantForBalance?.name }}</strong></p>
-        <div class="form-group">
-          <label>金額 (正數增加 / 負數扣除)：</label>
-          <input type="number" v-model.number="balanceAdjustAmount" class="input-control" placeholder="例: 5000">
-        </div>
-        <div class="form-group">
-          <label>調整理由：</label>
-          <input type="text" v-model="balanceAdjustReason" class="input-control" placeholder="請輸入理由">
-        </div>
-
-        <!-- 2FA Authenticator 驗證碼輸入 -->
-        <div v-if="is2FAEnabled" class="form-group" style="background:#e6f7ff; padding:10px; border-radius:6px; border:1px solid #91d5ff;">
-          <label style="color:#1890ff; font-weight:bold;">🔐 Authenticator 6 位數動態驗證碼：</label>
-          <input type="text" v-model="input2FACode" class="input-control" placeholder="請查看手機 App 輸入" maxlength="6" style="text-align:center; font-size:16px; letter-spacing:2px; margin-top:4px;">
-        </div>
-
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
-          <button class="btn" @click="showBalanceModal = false">取消</button>
-          <button class="btn btn-primary" @click="confirmBalanceAdjust">確認調整</button>
-        </div>
-      </div>
+      </dialog>
     </div>
   `,
-  data() {
-    return {
-      activeMenu: 'security_2fa',
-      openSubMenus: ['channel_group', 'supplier_group', 'collect_group', 'payout_group', 'settlement_group'],
-      filterDate: '',
+  setup() {
+    const selectedMerchant = ref('')
+    const searchOrderNo = ref('')
+    const confirmModalVisible = ref(false)
+    const securityModalVisible = ref(false)
+    const submitting = ref(false)
+    const currentActionType = ref('')
+    const currentActionRow = ref(null)
 
-      // 2FA / Authenticator 狀態
-      is2FAEnabled: true,
-      bind2FACode: '',
-      input2FACode: '',
+    const merchantOptions = ref([
+      { value: 'M1001', label: 'M1001 - 東南亞電商平台' },
+      { value: 'M1002', label: 'M1002 - 跨境遊戲娛樂' }
+    ])
 
-      selectedMerchantFilter: '', // 下拉選單選擇的商戶名
+    const merchantList = ref([
+      { id: 'M1001', name: '東南亞電商平台', balance: 2450000, settlement: 'D0', channels: 'Xendit/GCash', status: '啟用' },
+      { id: 'M1002', name: '跨境遊戲娛樂', balance: 890000, settlement: 'T1', channels: 'Maya/GrabPay', status: '啟用' }
+    ])
 
-      searchQuery: {
-        mchNo: '',
-        sysNo: '',
-        supNo: '',
-        dateType: 'day',
-        selectedDate: ''
-      },
+    const confirmForm = reactive({
+      adminAccount: '',
+      adminPassword: '',
+      totpCode: ''
+    })
 
-      showAddMerchantModal: false,
-      newMerchant: { id: '', name: '', rawBalance: 0, collectFeeRate: 0.8, payoutFeeRate: 0.5, minLimit: 100, maxLimit: 50000, settleMode: 'D0', connectedChannels: ['GCash (Xendit)'], active: true },
-
-      showConfigModal: false,
-      editingMerchant: null,
-
-      showBalanceModal: false,
-      selectedMerchantForBalance: null,
-      balanceAdjustAmount: 0,
-      balanceAdjustReason: '',
-
-      menuItems: [
-        { key: 'security_2fa', label: '🔐 安全設定 (2FA)' },
-        {
-          key: 'channel_group',
-          label: '⚙️ 渠道與東南亞設置',
-          children: [
-            { key: 'channel_weight', label: '渠道權重' },
-            { key: 'channel_toggle', label: '渠道開關' }
-          ]
-        },
-        {
-          key: 'supplier_group',
-          label: '🏭 供應商訂單查詢',
-          children: [
-            { key: 'sup_collect', label: '供應商代收訂單' },
-            { key: 'sup_collect_exact', label: '供應商代收訂單(精準)' },
-            { key: 'sup_payout', label: '供應商代付訂單' },
-            { key: 'sup_payout_exact', label: '供應商代付訂單(精準)' }
-          ]
-        },
-        {
-          key: 'collect_group',
-          label: '📥 代收訂單查詢',
-          children: [
-            { key: 'collect_orders', label: '代收訂單查詢' },
-            { key: 'collect_exact', label: '代收訂單查詢(精準)' }
-          ]
-        },
-        {
-          key: 'payout_group',
-          label: '📤 代付訂單查詢',
-          children: [
-            { key: 'payout_orders', label: '代付訂單查詢' },
-            { key: 'payout_exact', label: '代付訂單查詢(精準)' }
-          ]
-        },
-        { key: 'merchant_list', label: '🏢 商戶列表' },
-        {
-          key: 'settlement_group',
-          label: '📊 總跑量結算',
-          children: [
-            { key: 'settlement_channel_total', label: '渠道總跑量' },
-            { key: 'settlement_channel_single', label: '渠道個跑量' },
-            { key: 'settlement_collect', label: '代收跑量' },
-            { key: 'settlement_payout', label: '代付跑量' },
-            { key: 'settlement_merchant_single', label: '商戶個跑量' },
-            { key: 'settlement_merchant_total', label: '商戶總跑量' },
-            { key: 'settlement_logs', label: '📜 結算明細' }
-          ]
-        }
-      ],
-
-      channels: [
-        { id: 'CHN-01', name: 'GCash (Xendit)', type: '代收', provider: 'Xendit Gateway', currency: 'PHP', weight: 50, minLimit: 100, maxLimit: 50000, active: true },
-        { id: 'CHN-02', name: 'GCash Direct Payout', type: '代付', provider: 'Xendit Disbursement', currency: 'PHP', weight: 50, minLimit: 100, maxLimit: 50000, active: true },
-        { id: 'CHN-03', name: 'PayMaya Native', type: '代收', provider: 'Maya Direct', currency: 'PHP', weight: 30, minLimit: 100, maxLimit: 30000, active: true },
-        { id: 'CHN-04', name: '微信支付直連', type: '代收', provider: 'WeChat Pay', currency: 'CNY', weight: 60, minLimit: 100, maxLimit: 50000, active: true }
-      ],
-
-      merchants: [
-        { id: 'MCH-1001', name: '菲律賓跨境跨境電商', rawBalance: 285000.00, collectFeeRate: 1.2, payoutFeeRate: 0.8, minLimit: 100, maxLimit: 50000, settleMode: 'D0', connectedChannels: ['GCash (Xendit)', 'PayMaya Native'], active: true },
-        { id: 'MCH-1002', name: '海淘優選', rawBalance: 42100.00, collectFeeRate: 0.75, payoutFeeRate: 0.45, minLimit: 100, maxLimit: 50000, settleMode: 'T1', connectedChannels: ['微信支付直連'], active: true }
-      ],
-
-      collectList: [
-        { time: '2026-08-13 10:12:00', mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-GCASH-9981', currency: 'PHP', merchant: '菲律賓跨境跨境電商', amount: 3500, status: '支付成功' },
-        { time: '2026-08-13 10:25:14', mchNo: 'MCH202608130002', sysNo: 'SYS-C-88102', supNo: 'SUP-MAYA-8822', currency: 'PHP', merchant: '菲律賓跨境跨境電商', amount: 12500, status: '支付成功' },
-        { time: '2026-08-13 11:02:40', mchNo: 'MCH202608130003', sysNo: 'SYS-C-88103', supNo: 'SUP-WX-9983', currency: 'CNY', merchant: '海淘優選', amount: 3200, status: '支付成功' }
-      ],
-
-      payoutList: [
-        { time: '2026-08-13 11:05:22', mchNo: 'MCH202608130099', sysNo: 'SYS-P-99201', supNo: 'SUP-GCASH-OUT-112', targetAccount: '09171234567 (GCash)', currency: 'PHP', merchant: '菲律賓跨境跨境電商', amount: 15000, status: '打款成功' },
-        { time: '2026-08-13 11:30:10', mchNo: 'MCH202608130100', sysNo: 'SYS-P-99202', supNo: 'SUP-UNION-113', targetAccount: '622202******8819', currency: 'CNY', merchant: '海淘優選', amount: 45000, status: '打款成功' }
-      ],
-
-      supCollectList: [
-        { date: '2026-08-13 10:20:00', mchNo: 'MCH202608130001', sysNo: 'SYS-C-88101', supNo: 'SUP-GCASH-9981', currency: 'PHP', supplier: 'Xendit (GCash)', amount: 3500, status: '成功' },
-        { date: '2026-08-13 10:25:00', mchNo: 'MCH202608130002', sysNo: 'SYS-C-88102', supNo: 'SUP-MAYA-8822', currency: 'PHP', supplier: 'PayMaya Official', amount: 12500, status: '成功' }
-      ],
-
-      supPayoutList: [
-        { date: '2026-08-13 11:45:00', mchNo: 'MCH202608130099', sysNo: 'SYS-P-99201', supNo: 'SUP-GCASH-OUT-112', currency: 'PHP', supplier: 'Xendit Disbursement', amount: 15000, status: '成功' }
-      ],
-
-      runSummaryList: [
-        { date: '2026-08-13', merchant: '菲律賓跨境跨境電商', channel: 'GCash (Xendit)', collectAmt: 285000, payoutAmt: 65000 },
-        { date: '2026-08-13', merchant: '海淘優選', channel: '微信支付', collectAmt: 89300, payoutAmt: 20000 }
-      ],
-
-      balanceLogs: [
-        { id: 'LOG-01', time: '2026-08-13 09:00:00', merchantName: '菲律賓跨境跨境電商', type: '手動充值', beforeBal: 185000, changeAmt: 100000, afterBal: 285000, reason: 'GCash 預付款充值' }
-      ]
+    const triggerSecureAction = (actionType, row) => {
+      currentActionType.value = actionType
+      currentActionRow.value = row
+      confirmModalVisible.value = true
     }
-  },
-  computed: {
-    allMerchantNames() { return this.merchants.map(m => m.name); },
-    filteredMerchants() {
-      if (!this.selectedMerchantFilter) return this.merchants;
-      return this.merchants.filter(m => m.name === this.selectedMerchantFilter);
-    },
 
-    isSupplierQueryMenu() { return this.activeMenu.startsWith('sup_'); },
-    isCollectQueryMenu() { return this.activeMenu.startsWith('collect_'); },
-    isPayoutQueryMenu() { return this.activeMenu.startsWith('payout_'); },
-    isSettlementMenu() { return this.activeMenu.startsWith('settlement_'); },
+    const handleSearch = () => {
+      alert(`關聯搜尋單號：${searchOrderNo.value || '全部'}`)
+    }
 
-    filteredCollectList() { return this.filterOrders(this.collectList); },
-    filteredPayoutList() { return this.filterOrders(this.payoutList); },
-    filteredSupplierList() {
-      const list = this.isPayoutMenu(this.activeMenu) ? this.supPayoutList : this.supCollectList;
-      return this.filterOrders(list);
-    },
-
-    currentSettlementTitle() {
-      const titles = {
-        settlement_channel_total: '渠道總跑量',
-        settlement_channel_single: '渠道個跑量',
-        settlement_collect: '代收跑量',
-        settlement_payout: '代付跑量',
-        settlement_merchant_single: '商戶個跑量',
-        settlement_merchant_total: '商戶總跑量',
-        settlement_logs: '結算明細'
-      };
-      return titles[this.activeMenu] || '跑量統計';
-    },
-    totalCollect() { return this.runSummaryList.reduce((s, i) => s + i.collectAmt, 0); },
-    totalPayout() { return this.runSummaryList.reduce((s, i) => s + i.payoutAmt, 0); }
-  },
-  methods: {
-    enable2FA() {
-      if (!this.bind2FACode || this.bind2FACode.length !== 6) return alert('請輸入 6 位數 Authenticator 驗證碼！');
-      this.is2FAEnabled = true;
-      this.bind2FACode = '';
-      alert('🟢 Authenticator (2FA) 綁定成功！');
-    },
-    disable2FA() {
-      if (confirm('確定要解除 Google Authenticator 綁定嗎？解除後關鍵操作將不再要求二維碼校驗。')) {
-        this.is2FAEnabled = false;
-        alert('已解除 2FA 綁定');
+    const submitSecureVerification = () => {
+      if (!confirmForm.adminAccount || !confirmForm.adminPassword || !confirmForm.totpCode) {
+        alert('請完整填寫帳號、密碼與 2FA 驗證碼')
+        return
       }
-    },
+      submitting.value = true
+      setTimeout(() => {
+        alert('驗證成功！高風險操作已執行。')
+        submitting.value = false
+        confirmModalVisible.value = false
+      }, 1000)
+    }
 
-    filterOrders(list) {
-      const mch = this.searchQuery.mchNo.trim().toLowerCase();
-      const sys = this.searchQuery.sysNo.trim().toLowerCase();
-      const sup = this.searchQuery.supNo.trim().toLowerCase();
-
-      return list.filter(item => {
-        const matchMch = mch ? item.mchNo.toLowerCase().includes(mch) : true;
-        const matchSys = sys ? item.sysNo.toLowerCase().includes(sys) : true;
-        const matchSup = sup ? item.supNo.toLowerCase().includes(sup) : true;
-
-        return matchMch && matchSys && matchSup;
-      });
-    },
-
-    resetSearch() {
-      this.searchQuery.mchNo = '';
-      this.searchQuery.sysNo = '';
-      this.searchQuery.supNo = '';
-      this.searchQuery.selectedDate = '';
-    },
-
-    toggleSubMenu(key) {
-      const index = this.openSubMenus.indexOf(key);
-      if (index > -1) this.openSubMenus.splice(index, 1);
-      else this.openSubMenus.push(key);
-    },
-    isChildActive(parentItem) {
-      if (!parentItem.children) return false;
-      return parentItem.children.some(child => child.key === this.activeMenu);
-    },
-    isPayoutMenu(key) { return key.includes('payout'); },
-    getMenuTitle(key) {
-      const map = {
-        sup_collect: '供應商代收訂單',
-        sup_collect_exact: '供應商代收訂單 (精準)',
-        sup_payout: '供應商代付訂單',
-        sup_payout_exact: '供應商代付訂單 (精準)',
-        collect_orders: '代收訂單查詢',
-        collect_exact: '代收訂單 (精準)',
-        payout_orders: '代付訂單查詢',
-        payout_exact: '代付訂單 (精準)'
-      };
-      return map[key] || '訂單查詢';
-    },
-
-    openAddMerchantModal() {
-      this.newMerchant = {
-        id: `MCH-${1000 + this.merchants.length + 1}`,
-        name: '',
-        rawBalance: 0,
-        collectFeeRate: 0.8,
-        payoutFeeRate: 0.5,
-        minLimit: 100,
-        maxLimit: 50000,
-        settleMode: 'D0',
-        connectedChannels: ['GCash (Xendit)'],
-        active: true
-      };
-      this.showAddMerchantModal = true;
-    },
-    confirmAddMerchant() {
-      if (!this.newMerchant.id || !this.newMerchant.name) return alert('請填寫完整商戶資訊！');
-      this.merchants.push({ ...this.newMerchant });
-      alert(`商戶 [${this.newMerchant.name}] 新增成功！`);
-      this.showAddMerchantModal = false;
-    },
-
-    openConfigModal(m) {
-      this.editingMerchant = JSON.parse(JSON.stringify(m));
-      this.showConfigModal = true;
-    },
-    saveMerchantConfig() {
-      const idx = this.merchants.findIndex(m => m.id === this.editingMerchant.id);
-      if (idx !== -1) {
-        this.merchants[idx] = { ...this.editingMerchant };
-        alert(`商戶 [${this.editingMerchant.name}] 配置儲存成功！`);
-      }
-      this.showConfigModal = false;
-    },
-
-    saveChannelWeight(c) { alert(`渠道 [${c.name}] 權重已更新為：${c.weight}`); },
-    openBalanceModal(m) {
-      this.selectedMerchantForBalance = m;
-      this.balanceAdjustAmount = 0;
-      this.balanceAdjustReason = '';
-      this.input2FACode = '';
-      this.showBalanceModal = true;
-    },
-    confirmBalanceAdjust() {
-      if (!this.balanceAdjustAmount) return alert('請輸入金額');
-      if (this.is2FAEnabled && (!this.input2FACode || this.input2FACode.length !== 6)) {
-        return alert('🔐 請輸入正確的 6 位數 Authenticator 驗證碼！');
-      }
-
-      this.selectedMerchantForBalance.rawBalance += Number(this.balanceAdjustAmount);
-      alert('✅ 安全驗證通過！餘額調整完畢！');
-      this.showBalanceModal = false;
-    },
-    exportCSV(filename) { alert(`已成功導出 CSV 檔案：${filename}`); }
+    return {
+      selectedMerchant,
+      searchOrderNo,
+      confirmModalVisible,
+      securityModalVisible,
+      submitting,
+      merchantOptions,
+      merchantList,
+      confirmForm,
+      triggerSecureAction,
+      handleSearch,
+      submitSecureVerification
+    }
   }
 })
-
-// 自動注入頁面樣式
-const style = document.createElement('style')
-style.innerHTML = `
-  * { box-sizing: border-box; }
-  .layout-container { display: flex; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f7f9; }
-  
-  .sidebar { width: 240px; background: #e8f3ff; color: #2c3e50; flex-shrink: 0; display: flex; flex-direction: column; justify-content: space-between; border-right: 1px solid #d0e3f7; }
-  .sidebar-logo { padding: 20px 16px; font-size: 18px; font-weight: bold; color: #1890ff; border-bottom: 1px solid #d0e3f7; background: #dbeeff; }
-  .sidebar-menu { padding: 12px 0; }
-  
-  .menu-item { padding: 12px 18px; cursor: pointer; font-size: 14px; color: #4a607a; transition: 0.2s; font-weight: 500; display: flex; justify-content: space-between; align-items: center; }
-  .menu-item:hover { background: #d0e5fc; color: #1890ff; }
-  .menu-item.active { background: #1890ff; color: #ffffff; font-weight: bold; }
-  
-  .arrow-icon { font-size: 10px; transition: transform 0.2s; }
-  .arrow-icon.open { transform: rotate(180deg); }
-  .submenu-container { background: #dcf0ff; }
-  .submenu-item { padding: 10px 10px 10px 32px; cursor: pointer; font-size: 13px; color: #3b536f; transition: 0.2s; }
-  .submenu-item:hover { background: #cce5fd; color: #1890ff; }
-  .submenu-item.active { background: #1890ff; color: #ffffff; font-weight: bold; }
-
-  .sidebar-footer { padding: 16px; font-size: 12px; color: #8a9ba8; border-top: 1px solid #d0e3f7; text-align: left; }
-
-  .main-content { flex: 1; padding: 24px; overflow-y: auto; }
-  .card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px; }
-  .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); border: 1px solid #eef2f5; }
-  .card-title { color: #8c8c8c; font-size: 13px; }
-  .card-value { font-size: 24px; font-weight: bold; margin-top: 6px; }
-  
-  .search-box-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .search-box-group .input-control { width: 160px; }
-
-  .data-table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 10px; }
-  .data-table th { background: #f7fafc; border-bottom: 2px solid #edf2f7; padding: 12px; font-size: 14px; color: #4a5568; }
-  .data-table td { padding: 12px; border-bottom: 1px solid #edf2f7; font-size: 14px; }
-  
-  .tag { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
-  .status-badge { padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-  .status-success { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
-  .status-disabled { background: #fff1f0; color: #f5222d; border: 1px solid #ffa39e; }
-
-  .modal-backdrop { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-  .modal-box { background: #fff; border-radius: 8px; width: 440px; padding: 24px; }
-  .form-group { margin-bottom: 14px; }
-  .form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: #4a5568; }
-  .input-control { padding: 7px 10px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 14px; outline: none; width: 100%; }
-  
-  .btn { padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-  .btn-primary { background: #1890ff; color: #fff; }
-  .btn-warning { background: #fa8c16; color: #fff; }
-  .btn-success { background: #52c41a; color: #fff; }
-  .btn-danger { background: #f5222d; color: #fff; }
-`
-document.head.appendChild(style)
 
 app.use(ElementPlus)
 app.mount('#app')
